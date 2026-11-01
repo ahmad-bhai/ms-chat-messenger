@@ -1,6 +1,6 @@
 # MS Chat v3 (Vercel + Upstash Redis + Firebase Push + Vercel Blob)
 
-Domain: https://ms-chat-messager.vercel.app
+Domain: https://ms-chat-messenger.vercel.app
 
 ## Files (repo root; only `index.js` goes inside `api/`)
 `index.html` · `api/index.js` · `notification.js` · `sw.js` · `firebase-messaging-sw.js` · `vercel.json` · `package.json` · `manifest.json` + icons + `notification.mp3` (already uploaded)
