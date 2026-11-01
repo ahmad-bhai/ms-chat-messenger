@@ -18,6 +18,7 @@
   };
   // Firebase Console -> Project settings -> Cloud Messaging -> Web Push certificates -> Key pair
   const VAPID_KEY = 'BD4RUDm98_pv7afX56-5V0HTjWSZri3uke2iHTlsAbnyJglvIollL4cdfYd20E8Q2_Suh3Q3kSoKNJ_cwL_qY-U';
+  const ICON = 'https://ms-chat-messager.vercel.app/icon-512.png';
   const FB_VER = '10.12.0';
   const SOUND_URL = 'https://ms-chat-messager.vercel.app/notification.mp3';
 
@@ -156,8 +157,25 @@
     catch (e) { return false; }
   }
 
+  /* Show a real system notification (used while app is open but chat is not in view) */
+  async function show(d) {
+    if (!state.reg || !('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      await state.reg.showNotification(d.title || 'MS Chat', {
+        body: d.body || '', icon: ICON, badge: ICON, tag: 'chat-' + d.chatId, renotify: true, silent: true,
+        data: { chatId: d.chatId, msgId: d.msgId },
+        actions: [
+          { action: 'reply', title: 'Reply', type: 'text', placeholder: 'Write a message...' },
+          { action: 'read', title: 'Mark as read' },
+          { action: 'mute', title: 'Mute' }
+        ]
+      });
+    } catch (e) { console.warn('show notification failed', e); }
+  }
+  const test = () => api('/push/test', {});
+
   window.MSNotify = {
-    init, setAuth, permission, registerDevice, unregisterDevice,
+    init, show, test, setAuth, permission, registerDevice, unregisterDevice,
     setBadge, playSound, isMuted, setMute, askMedia, askStorage,
     setActiveChat: id => { state.activeChat = id; },
     get fcmToken() { return state.fcmToken; }
