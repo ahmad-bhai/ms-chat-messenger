@@ -319,7 +319,7 @@ A['/chats'] = async c => {
     const pid = peerOf(chat, c.uid);
     const [pu, cn] = await Promise.all([r.get('user:' + pid), r.hget('ct:' + c.uid, pid)]);
     if (!pu) return null;
-    return { chat, saved: chat === sv, peer: await pub(pu, c.uid), cn: cn || '', last: vis(m, c.uid, meta.clr) ? m : null, unread: +un || 0, mute: muted(meta) || meta.mute === -2 ? meta.mute : 0, blocked: !!(await r.sismember('bl:' + c.uid, pid)) };
+    return { chat, rd: +(await r.get('rd:' + chat + ':' + pid)) || 0, saved: chat === sv, peer: await pub(pu, c.uid), cn: cn || '', last: vis(m, c.uid, meta.clr) ? m : null, unread: +un || 0, mute: muted(meta) || meta.mute === -2 ? meta.mute : 0, blocked: !!(await r.sismember('bl:' + c.uid, pid)) };
   }));
   return { chats: out.filter(Boolean), v: +(await r.get('ver')) || 0 };
 };
@@ -517,6 +517,11 @@ A['/notif/action'] = async (c, b) => {
   return { err: 'bad action' };
 };
 
+A['/fb/token'] = async c => {
+  const a = fb();
+  if (!a) return { err: 'Firebase not configured on server' };
+  try { return { token: await a.auth().createCustomToken(c.uid) }; } catch (e) { console.error('fb token', e.message); return { err: e.message }; }
+};
 A['/push/test'] = async c => {
   const a = fb(), toks = await r.smembers('fcm:' + c.uid);
   if (!a) return { err: 'Server Firebase not configured: ' + (fbErr || 'FIREBASE_SERVICE_ACCOUNT env missing') };
