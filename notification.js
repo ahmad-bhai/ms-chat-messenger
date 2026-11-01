@@ -18,7 +18,7 @@
   };
   // Firebase Console -> Project settings -> Cloud Messaging -> Web Push certificates -> Key pair
   const VAPID_KEY = 'BD4RUDm98_pv7afX56-5V0HTjWSZri3uke2iHTlsAbnyJglvIollL4cdfYd20E8Q2_Suh3Q3kSoKNJ_cwL_qY-U';
-  const ICON = 'https://ms-chat-messager.vercel.app/icon-512.png';
+  const ICON = 'https://ms-chat-messager.vercel.app/maskable-512.png';
   const FB_VER = '10.12.0';
   const SOUND_URL = 'https://ms-chat-messager.vercel.app/notification.mp3';
 
