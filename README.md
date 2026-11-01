@@ -1,6 +1,6 @@
 # MS Chat v3 (Vercel + Upstash Redis + Firebase Push + Vercel Blob)
 
-Domain: https://ms-chat-messenger.vercel.app
+Domain: https://ms-chat-messenger.vercel.app/
 
 ## Files (repo root; only `index.js` goes inside `api/`)
 `index.html` · `api/index.js` · `notification.js` · `sw.js` · `firebase-messaging-sw.js` · `vercel.json` · `package.json` · `manifest.json` + icons + `notification.mp3` (already uploaded)
@@ -32,3 +32,26 @@ Red × = Vercel deployment fail. Sabab: purani `package.json` mein `"engines": {
 - Background notification mein custom mp3 nahi bajta (OS ki awaaz); mp3 sirf app khuli hone par.
 - Passkey (WebAuthn) abhi nahi hai; Passcode lock + Two-step hai.
 - Photo/video editing (draw/mark) abhi nahi hai.
+
+
+## Media upload (Firebase Storage, max 2 GB)
+1. Firebase Console -> **Authentication** -> Get started (sirf enable karna hai, koi provider zaroori nahi). Server custom token banata hai.
+2. Firebase Console -> **Storage** -> Get started. Agar Firebase "Blaze plan" maange to upgrade karna padega (free quota milti hai, card zaroori ho sakta hai).
+3. Storage -> **Rules** mein ye paste karke Publish:
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /u/{uid}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 2 * 1024 * 1024 * 1024;
+    }
+  }
+}
+```
+4. Upload fail ho to toast mein asli wajah likhi aati hai (jaise `storage/unauthorized` = rules, `auth/...` = Authentication enable nahi).
+
+## Icons (repo root mein ye SVG files hon)
+`white-*` dark theme par, `black-*` light theme par: read, unread, pending, bold, italic, mono, strikethrough, underline, spoiler. Plus `sun.svg`, `moon.svg`.
+Bubble ke andar ticks hamesha white-* use hote hain (bubble purple hai).
