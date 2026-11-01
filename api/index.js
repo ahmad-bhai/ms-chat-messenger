@@ -15,9 +15,9 @@ const hp = (p, s) => crypto.scryptSync(String(p), s, 32).toString('hex');
 const hs = (v, uid) => crypto.createHash('sha256').update(SECRET + uid + v).digest('hex');
 const ver = () => r.incr('ver');
 const parts = c => (c[0] === 's' ? [c.slice(2)] : c.slice(2).split(':'));
-const can = (u, c) => typeof c === 'string' && /^[ps]:/.test(c) && parts(c).includes(u);
-const peerOf = (c, u) => (c[0] === 's' ? u : parts(c).find(x => x !== u));
-const pairId = (a, b) => (a === b ? 's:' + a : 'p:' + [a, b].sort().join(':'));
+const can = (u, c) => typeof c === 'string' && /^[ps]:/.test(c) && parts(c).includes(String(u));
+const peerOf = (c, u) => (c[0] === 's' ? String(u) : parts(c).find(x => x !== String(u)));
+const pairId = (a, b) => { a = String(a); b = String(b); return a === b ? 's:' + a : 'p:' + [a, b].sort().join(':'); };
 const getM = (u, c) => r.get(`cm:${u}:${c}`).then(x => x || {});
 const setM = (u, c, o) => r.set(`cm:${u}:${c}`, o);
 const vis = (m, u, clr) => m && !m.dead && !(m.del || []).includes(u) && m.ts > (clr || 0);
@@ -68,7 +68,7 @@ const own = u => ({ id: u.id, email: u.email, name: u.name, username: u.username
 
 async function newSession(uid, req) {
   const sid = rid();
-  await r.set('sess:' + sid, { uid, ua: (req.headers['user-agent'] || '').slice(0, 140), ts: now(), last: now() });
+  await r.set('sess:' + sid, { uid: String(uid), ua: (req.headers['user-agent'] || '').slice(0, 140), ts: now(), last: now() });
   await r.sadd('us:' + uid, sid);
   return sid;
 }
@@ -82,7 +82,7 @@ async function auth(req) {
   if (now() - (s.last || s.ts) > (u.autoOut || 15552e6)) { await r.del('sess:' + t); await r.srem('us:' + s.uid, t); return null; }
   if (now() - (s.last || 0) > 600000) { s.last = now(); await r.set('sess:' + t, s); }
   await r.set('seen:' + s.uid, now());
-  return { sid: t, uid: s.uid };
+  return { sid: t, uid: String(s.uid) };
 }
 
 async function bump(chat, m) {
@@ -115,7 +115,7 @@ async function notify(peer, from, m, chat) {
 
 async function send(uid, b) {
   const chat = b.chat;
-  if (!can(uid, chat)) return { err: 'forbidden' };
+  if (!can(uid, chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
   const peer = peerOf(chat, uid);
   if (peer === SYS) return { err: 'Service chat is read-only' };
   if (peer !== uid && (await isBlk(uid, peer))) return { err: 'You cannot message this user' };
@@ -139,7 +139,7 @@ async function send(uid, b) {
 }
 
 async function markRead(uid, chat) {
-  if (!can(uid, chat)) return { err: 'forbidden' };
+  if (!can(uid, chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
   await r.set(`un:${uid}:${chat}`, 0);
   await r.set(`rd:${chat}:${uid}`, (await r.get('lm:' + chat)) || 0);
   const p = peerOf(chat, uid);
@@ -189,7 +189,7 @@ async function checkCode(uid, purpose, code) {
   await r.del(k);
   return true;
 }
-const mkPend = async uid => { const p = rid(); await r.set('pend:' + p, { uid, tries: 0 }, { ex: 600 }); return p; };
+const mkPend = async uid => { const p = rid(); await r.set('pend:' + p, { uid: String(uid), tries: 0 }, { ex: 600 }); return p; };
 async function finish(u, req) {
   const had = await liveSessions(u.id);
   const token = await newSession(u.id, req);
@@ -226,7 +226,7 @@ const open = {
   async '/auth/login-start'(req, b) {
     const email = String(b.email || '').trim().toLowerCase();
     if (!(await rl('ls:' + email, 5))) return { err: 'Too many tries, wait a minute' };
-    const id = await r.get('email:' + email), u = id && (await r.get('user:' + id));
+    const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
     if (!u) return { err: 'No account with this email. Create one first.' };
     const via = await sendCode(u, 'login', 'Login');
     return via ? { ok: true, via } : { err: 'No logged-in device and email service is not set up, so the code cannot be delivered.' };
@@ -234,7 +234,7 @@ const open = {
   async '/auth/login-verify'(req, b) {
     const email = String(b.email || '').trim().toLowerCase();
     if (!(await rl('lv:' + email, 10))) return { err: 'Too many tries, wait a minute' };
-    const id = await r.get('email:' + email), u = id && (await r.get('user:' + id));
+    const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
     if (!u || !(await checkCode(id, 'login', b.code))) return { err: 'Wrong or expired code' };
     if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(id) };
     return finish(u, req);
@@ -289,7 +289,7 @@ A['/me/update'] = async (c, b) => {
     const nu = String(b.username).replace(/^@/, '').trim();
     if (!/^[a-zA-Z]\w{2,31}$/.test(nu)) return { err: 'Invalid username' };
     const ex = await r.get('uname:' + nu.toLowerCase());
-    if (ex && ex !== c.uid) return { err: 'Username taken' };
+    if (ex != null && String(ex) !== c.uid) return { err: 'Username taken' };
     await r.del('uname:' + u.username.toLowerCase());
     await r.set('uname:' + nu.toLowerCase(), c.uid);
     u.username = nu;
@@ -299,7 +299,8 @@ A['/me/update'] = async (c, b) => {
 };
 A['/user'] = async (c, b, q) => {
   const k = String(q.u || '').replace(/^@/, '');
-  const id = /^\d{10}$/.test(k) ? k : await r.get('uname:' + k.toLowerCase());
+  const raw = /^\d{10}$/.test(k) ? k : await r.get('uname:' + k.toLowerCase());
+  const id = raw == null ? null : String(raw);
   const u = id && (await r.get('user:' + id));
   if (!u) return { err: 'User not found' };
   return {
@@ -324,7 +325,7 @@ A['/chats'] = async c => {
 };
 A['/msgs'] = async (c, b, q) => {
   const chat = q.chat;
-  if (!can(c.uid, chat)) return { err: 'forbidden' };
+  if (!can(c.uid, chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
   const meta = await getM(c.uid, chat);
   const list = Object.values(await allMsgs(chat)).filter(m => vis(m, c.uid, meta.clr)).sort((a, b) => a.id - b.id);
   let from = Math.max(0, list.length - 120);
@@ -384,18 +385,18 @@ A['/react'] = async (c, b) => {
   return { ok: true, msg: m };
 };
 A['/chat/mute'] = async (c, b) => {
-  if (!can(c.uid, b.chat)) return { err: 'forbidden' };
+  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
   const m = await getM(c.uid, b.chat); m.mute = +b.until || 0;
   await setM(c.uid, b.chat, m);
   return { ok: true };
 };
 A['/chat/clear'] = async (c, b) => {
-  if (!can(c.uid, b.chat)) return { err: 'forbidden' };
+  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
   for (const u of b.both ? parts(b.chat) : [c.uid]) { const m = await getM(u, b.chat); m.clr = now(); await setM(u, b.chat, m); if (u !== c.uid) await touch(u, b.chat); }
   return { ok: true };
 };
 A['/chat/delete'] = async (c, b) => {
-  if (!can(c.uid, b.chat)) return { err: 'forbidden' };
+  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
   for (const u of b.both ? parts(b.chat) : [c.uid]) {
     const m = await getM(u, b.chat); m.clr = now(); await setM(u, b.chat, m);
     if (b.chat[0] !== 's') await r.zrem('ul:' + u, b.chat);
@@ -412,8 +413,8 @@ A['/search'] = async (c, b, q) => {
   };
   if (q.chat) return can(c.uid, q.chat) ? { msgs: (await scan(q.chat)).slice(0, 50) } : { err: 'forbidden' };
   const users = [];
-  const uid2 = await r.get('uname:' + s.replace(/^@/, ''));
-  if (uid2) users.push(await pub(await r.get('user:' + uid2), c.uid));
+  const uid2 = await r.get('uname:' + s.replace(/^@/, ''));  // may come back as number
+  if (uid2 != null) users.push(await pub(await r.get('user:' + String(uid2)), c.uid));
   const ids = (await r.zrange('ul:' + c.uid, 0, -1, { rev: true })).map(String).slice(0, 40);
   const chats = [];
   for (const chat of ids) { const f = await scan(chat); if (f.length) chats.push({ chat, n: f.length, snippet: f[0].text }); }
@@ -525,7 +526,8 @@ A['/push/test'] = async c => {
 };
 
 /* Uploads go browser -> Vercel Blob directly (up to 70 MB) */
-const blobToken = () => process.env.BLOB_READ_WRITE_TOKEN || (Object.entries(process.env).find(([k]) => k.endsWith('BLOB_READ_WRITE_TOKEN')) || [])[1];
+const blobToken = () => process.env.BLOB_READ_WRITE_TOKEN || (Object.entries(process.env).find(([k, v]) => /READ_WRITE_TOKEN$/.test(k) || String(v).startsWith('vercel_blob_rw_')) || [])[1];
+const blobEnvNames = () => Object.keys(process.env).filter(k => /BLOB|READ_WRITE/i.test(k));
 async function upload(req, res, body) {
   try {
     const { handleUpload } = require('@vercel/blob/client');
@@ -547,7 +549,7 @@ module.exports = async (req, res) => {
   const q = req.query || {};
   const b = (req.body && typeof req.body === 'object' && req.body) || {};
   try {
-    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!blobToken(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT });
+    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!blobToken(), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT });
     if (p === '/upload') return upload(req, res, b);
     if (open[p]) return res.json(await open[p](req, b));
     const c = await auth(req);
