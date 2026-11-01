@@ -530,7 +530,7 @@ const blobToken = () => process.env.BLOB_READ_WRITE_TOKEN || (Object.entries(pro
 const blobEnvNames = () => Object.keys(process.env).filter(k => /BLOB|READ_WRITE/i.test(k));
 async function upload(req, res, body) {
   try {
-    const { handleUpload } = require('@vercel/blob/client');
+    const { handleUpload } = await import('@vercel/blob/client');
     const j = await handleUpload({
       body, request: req, token: blobToken(),
       onBeforeGenerateToken: async (pathname, payload) => {
@@ -549,7 +549,7 @@ module.exports = async (req, res) => {
   const q = req.query || {};
   const b = (req.body && typeof req.body === 'object' && req.body) || {};
   try {
-    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!blobToken(), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT });
+    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT });
     if (p === '/upload') return upload(req, res, b);
     if (open[p]) return res.json(await open[p](req, b));
     const c = await auth(req);
