@@ -2,7 +2,7 @@
    Cache + notification display + notification actions (Reply / Mark as read / Mute) + deep link open.
    NOTE: The page registers /firebase-messaging-sw.js, which importScripts() this file,
    so both live in ONE service worker (no scope conflict). */
-const CACHE = 'ms-chat-v2';
+const CACHE = 'ms-chat-v3';
 const ORIGIN = 'https://ms-chat-messager.vercel.app';
 const ICON = ORIGIN + '/icon-512.png';
 const BADGE = ORIGIN + '/icon-192.png';
@@ -95,6 +95,7 @@ self.showMsgNotification = function (d) {
     tag: 'chat-' + chatId,
     renotify: true,
     silent: d.silent === '1',
+    silent: d.silent === '1',
     vibrate: [120, 60, 120],
     timestamp: Number(d.ts) || Date.now(),
     data: { chatId: d.chatId, msgId: d.msgId, url: d.url },
@@ -145,7 +146,7 @@ self.addEventListener('notificationclick', e => {
     const text = (e.reply || '').trim();
     if (!text) { e.waitUntil(openChat(data.chatId, data.msgId)); return; }
     e.waitUntil(callAction({ action: 'reply', chatId: data.chatId, text }).then(res => {
-      if (!res || !res.ok) return openChat(data.chatId, data.msgId);
+      if (!res || !res.ok) return openChat(data.chatId, data.msgId); // not logged in / failed -> open app
     }));
     return;
   }
@@ -156,11 +157,12 @@ self.addEventListener('notificationclick', e => {
     return;
   }
   if (action === 'mute') {
-    const until = Date.now() + 60 * 60 * 1000;
+    const until = Date.now() + 60 * 60 * 1000; // 1 hour
     e.waitUntil(callAction({ action: 'mute', chatId: data.chatId, until })
       .then(() => self.clients.matchAll({ type: 'window' }))
-      .then(cs => cs.forEach(c => c.postManager?.() || cs.forEach(c => c.postMessage({ type: 'NOTIF_ACTION', action: 'mute', chatId: data.chatId, until }))));
+      .then(cs => cs.forEach(c => c.postMessage({ type: 'NOTIF_ACTION', action: 'mute', chatId: data.chatId, until }))));
     return;
   }
+  // Plain tap: open that exact chat/message
   e.waitUntil(openChat(data.chatId, data.msgId));
 });
