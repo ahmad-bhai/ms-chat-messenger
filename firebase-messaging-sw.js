@@ -1,4 +1,7 @@
-/* MS Chat - firebase-messaging-sw.js */
+/* MS Chat - firebase-messaging-sw.js
+   This is the ONE service worker the page registers. It loads sw.js (cache + notification actions)
+   and Firebase Messaging for background push. Server must send DATA-ONLY messages
+   (no "notification" key) so we can show buttons ourselves. */
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 importScripts('/sw.js');
@@ -16,11 +19,8 @@ try {
   const messaging = firebase.messaging();
   messaging.onBackgroundMessage(payload => {
     const d = payload.data || {};
+    // If an old-style "notification" payload arrives, FCM already shows it; avoid duplicates.
     if (payload.notification && !d.title) return;
-    if (typeof self.showMsgNotification === 'function') {
-      return self.showMsgNotification(d);
-    }
+    return self.showMsgNotification(d);
   });
-} catch (e) {
-  // FCM optional
-}
+} catch (e) { /* FCM optional */ }
