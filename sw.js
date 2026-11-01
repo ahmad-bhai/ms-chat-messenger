@@ -2,11 +2,11 @@
    Cache + notification display + notification actions (Reply / Mark as read / Mute) + deep link open.
    NOTE: The page registers /firebase-messaging-sw.js, which importScripts() this file,
    so both live in ONE service worker (no scope conflict). */
-const CACHE = 'ms-chat-v3';
+const CACHE = 'ms-chat-v4';
 const ORIGIN = 'https://ms-chat-messager.vercel.app';
 const ICON = ORIGIN + '/icon-512.png';
 const BADGE = ORIGIN + '/icon-192.png';
-const SHELL = ['/', '/index.html', '/manifest.json', '/notification.js', '/icon-192.png', '/icon-512.png'];
+const SHELL = ['/', '/index.html', '/manifest.json', '/notification.js', '/style.css', '/app.js', '/icon-192.png', '/icon-512.png'];
 const EMOJI_HOST = 'magic-scripts-emojis.vercel.app';
 
 /* ---------- tiny IndexedDB key-value (stores auth token for notification actions) ---------- */
@@ -71,7 +71,7 @@ self.addEventListener('fetch', e => {
       if (res.ok) { const cl = res.clone(); caches.open(CACHE).then(c => c.put(req, cl)); }
       return res;
     }).catch(() => hit);
-    return hit || net;
+    return /\.(js|css|html)$/.test(url.pathname) ? net : (hit || net);
   }));
 });
 
