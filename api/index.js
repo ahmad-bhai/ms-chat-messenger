@@ -525,6 +525,17 @@ A['/push/test'] = async c => {
   return { ok: out.successCount, failed: out.failureCount, codes: out.responses.filter(x => !x.success).map(x => x.error && x.error.code) };
 };
 
+A['/put'] = async (c, b, q) => {
+  if (!Buffer.isBuffer(b)) return { err: 'No file received' };
+  if (b.length > 4.4 * 1048576) return { err: 'File too big for this route' };
+  try {
+    const { put } = await import('@vercel/blob');
+    const name = String(q.name || 'file').replace(/[^\w.\-]/g, '_').slice(-80);
+    const x = await put(`f/${c.uid}/${name}`, b, { access: 'public', addRandomSuffix: true, contentType: String(q.type || 'application/octet-stream'), token: blobToken() });
+    return { url: x.url };
+  } catch (e) { console.error('put', e.message); return { err: e.message }; }
+};
+
 /* Uploads go browser -> Vercel Blob directly (up to 70 MB) */
 const blobToken = () => process.env.BLOB_READ_WRITE_TOKEN || (Object.entries(process.env).find(([k, v]) => /READ_WRITE_TOKEN$/.test(k) || String(v).startsWith('vercel_blob_rw_')) || [])[1];
 const blobEnvNames = () => Object.keys(process.env).filter(k => /BLOB|READ_WRITE/i.test(k));
