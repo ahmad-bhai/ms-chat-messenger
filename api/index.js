@@ -9,6 +9,7 @@ const r = new Redis({
 });
 const SECRET = process.env.AUTH_SECRET || 'ms-chat-secret';
 const now = () => Date.now();
+const SYS = '1000000';
 const rid = () => crypto.randomBytes(24).toString('hex');
 const hp = (p, s) => crypto.scryptSync(String(p), s, 32).toString('hex');
 const hs = (v, uid) => crypto.createHash('sha256').update(SECRET + uid + v).digest('hex');
@@ -33,18 +34,23 @@ async function mail(to, subject, text) {
   return x.ok;
 }
 
-let adm;
+let adm, fbErr = '';
 function fb() {
   if (adm !== undefined) return adm;
   try {
     const a = require('firebase-admin');
-    if (!a.apps.length) a.initializeApp({ credential: a.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+    if (!a.apps.length) {
+      const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, '\n');
+      a.initializeApp({ credential: a.credential.cert(sa) });
+    }
     adm = a;
-  } catch (e) { adm = null; }
+  } catch (e) { adm = null; fbErr = e.message; console.error('firebase init', e.message); }
   return adm;
 }
 
 function status(u, seen, blocked, vid) {
+  if (u.sys) return 'Service';
   if (u.id === vid) return 'online';
   if (blocked || !seen) return 'last seen long time ago';
   const a = now() - seen, d = 864e5;
@@ -56,13 +62,13 @@ async function pub(u, vid) {
   if (!u) return null;
   const blocked = await isBlk(u.id, vid);
   const seen = (await r.get('seen:' + u.id)) || 0;
-  return { id: u.id, name: u.name, username: u.username, bio: u.bio || '', dob: u.dob || '', avatar: blocked ? '' : u.avatar || '', status: status(u, seen, blocked, vid) };
+  return { id: u.id, name: u.name, username: u.username, bio: u.bio || '', dob: u.dob || '', avatar: blocked ? '' : u.avatar || '', verified: !!u.verified, sys: !!u.sys, status: status(u, seen, blocked, vid) };
 }
-const own = u => ({ id: u.id, email: u.email, name: u.name, username: u.username, bio: u.bio || '', dob: u.dob || '', avatar: u.avatar || '', hideSeen: !!u.hideSeen, two: !!(u.sec && u.sec.two), pass: !!(u.sec && u.sec.pass) });
+const own = u => ({ id: u.id, email: u.email, name: u.name, username: u.username, bio: u.bio || '', dob: u.dob || '', avatar: u.avatar || '', hideSeen: !!u.hideSeen, autoOut: u.autoOut || 15552e6, two: !!(u.sec && u.sec.two), pass: !!(u.sec && u.sec.pass) });
 
 async function newSession(uid, req) {
   const sid = rid();
-  await r.set('sess:' + sid, { uid, ua: (req.headers['user-agent'] || '').slice(0, 120), ts: now() });
+  await r.set('sess:' + sid, { uid, ua: (req.headers['user-agent'] || '').slice(0, 140), ts: now(), last: now() });
   await r.sadd('us:' + uid, sid);
   return sid;
 }
@@ -71,6 +77,10 @@ async function auth(req) {
   if (!t) return null;
   const s = await r.get('sess:' + t);
   if (!s) return null;
+  const u = await r.get('user:' + s.uid);
+  if (!u) return null;
+  if (now() - (s.last || s.ts) > (u.autoOut || 15552e6)) { await r.del('sess:' + t); await r.srem('us:' + s.uid, t); return null; }
+  if (now() - (s.last || 0) > 600000) { s.last = now(); await r.set('sess:' + t, s); }
   await r.set('seen:' + s.uid, now());
   return { sid: t, uid: s.uid };
 }
@@ -100,13 +110,14 @@ async function notify(peer, from, m, chat) {
       webpush: { headers: { Urgency: 'high', TTL: '86400' } }
     });
     out.responses.forEach((x, i) => { if (!x.success && /not-registered|invalid/.test((x.error && x.error.code) || '')) r.srem('fcm:' + peer, toks[i]); });
-  } catch (e) { /* push is best effort */ }
+  } catch (e) { console.error('push failed', e.message); }
 }
 
 async function send(uid, b) {
   const chat = b.chat;
   if (!can(uid, chat)) return { err: 'forbidden' };
   const peer = peerOf(chat, uid);
+  if (peer === SYS) return { err: 'Service chat is read-only' };
   if (peer !== uid && (await isBlk(uid, peer))) return { err: 'You cannot message this user' };
   const text = String(b.text || '').slice(0, 4000);
   if (!text && !b.media) return { err: 'empty' };
@@ -138,32 +149,131 @@ async function markRead(uid, chat) {
 const allMsgs = async chat => (await r.hgetall('mh:' + chat)) || {};
 const getMsg = async (c, b) => (can(c.uid, b.chat) ? r.hget('mh:' + b.chat, b.id) : null);
 
+
+const rl = async (k, n) => { const c = await r.incr('rl:' + k); if (c === 1) await r.expire('rl:' + k, 60); return c <= n; };
+async function sys() {
+  let u = await r.get('user:' + SYS);
+  if (!u) {
+    u = { id: SYS, name: 'MS SPAM CHAT', username: 'msspamchat', email: '', bio: 'Official service notifications', avatar: 'https://ms-chat-messager.vercel.app/icon-512.png', sys: true, verified: true, sec: {} };
+    await r.set('user:' + SYS, u); await r.set('uname:msspamchat', SYS);
+  }
+  return u;
+}
+async function sysSend(uid, text) {
+  const s = await sys(), chat = pairId(SYS, uid), id = await r.incr('mid');
+  const m = { id, chat, from: SYS, text, ts: now(), media: null, reply: null, fwd: null, react: {}, del: [], pin: [] };
+  await bump(chat, m);
+  await r.set('lm:' + chat, id);
+  await r.zadd('ul:' + uid, { score: m.ts, member: chat });
+  await r.incr(`un:${uid}:${chat}`);
+  await notify(uid, s, m, chat);
+}
+async function liveSessions(uid) {
+  let n = 0;
+  for (const s of await r.smembers('us:' + uid)) { if (await r.get('sess:' + s)) n++; else await r.srem('us:' + uid, s); }
+  return n;
+}
+async function sendCode(u, purpose, label) {
+  const code = String(crypto.randomInt(100000, 999999));
+  await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
+  const text = `${label} code: ${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
+  if (purpose !== 'reset' && (await liveSessions(u.id))) { await sysSend(u.id, text); return 'chat'; }
+  if (await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text)) return 'email';
+  return null;
+}
+async function checkCode(uid, purpose, code) {
+  const k = `code:${purpose}:${uid}`, o = await r.get(k);
+  if (!o || o.exp < now()) return false;
+  if (o.tries >= 5) { await r.del(k); return false; }
+  if (o.h !== hs(String(code || '').trim(), uid)) { o.tries++; await r.set(k, o, { ex: 600 }); return false; }
+  await r.del(k);
+  return true;
+}
+const mkPend = async uid => { const p = rid(); await r.set('pend:' + p, { uid, tries: 0 }, { ex: 600 }); return p; };
+async function finish(u, req) {
+  const had = await liveSessions(u.id);
+  const token = await newSession(u.id, req);
+  if (had) await sysSend(u.id, `New login to your account from: ${(req.headers['user-agent'] || 'unknown device').slice(0, 110)}\n\nIf this was not you, open Settings > Privacy and security > Devices and terminate that session.`);
+  return { token, me: own(u) };
+}
+
 const A = {};
 const open = {
   async '/auth/register'(req, b) {
     const email = String(b.email || '').trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) return { err: 'Invalid email' };
-    if (String(b.password || '').length < 6) return { err: 'Password must be at least 6 characters' };
     const name = String(b.name || '').trim().slice(0, 40);
     if (!name) return { err: 'Name required' };
-    if (await r.get('email:' + email)) return { err: 'Email already registered' };
+    if (await r.get('email:' + email)) return { err: 'Email already registered. Use Login.' };
     const id = String(7000000000 + (await r.incr('uid')));
     const username = String(b.username || '').replace(/^@/, '').trim() || 'user' + id.slice(-7);
     if (!/^[a-zA-Z]\w{2,31}$/.test(username)) return { err: 'Username: 3-32 chars, letters/numbers/_' };
     if (await r.get('uname:' + username.toLowerCase())) return { err: 'Username taken' };
-    const salt = rid();
-    const u = { id, email, name, username, bio: '', dob: '', avatar: '', salt, pw: hp(b.password, salt), sec: {}, created: now() };
-    await r.set('user:' + id, u);
-    await r.set('email:' + email, id);
-    await r.set('uname:' + username.toLowerCase(), id);
+    if (process.env.RESEND_API_KEY) { // verify email ownership when email service is configured
+      if (!b.code) {
+        if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
+        const code = String(crypto.randomInt(100000, 999999));
+        await r.set('regc:' + email, hs(code, email), { ex: 600 });
+        return (await mail(email, 'MS Chat verification code', 'Your code: ' + code)) ? { needCode: true } : { err: 'Could not send email' };
+      }
+      if ((await r.get('regc:' + email)) !== hs(String(b.code).trim(), email)) return { err: 'Wrong code' };
+      await r.del('regc:' + email);
+    }
+    const u = { id, email, name, username, bio: '', dob: '', avatar: '', sec: {}, created: now() };
+    await r.set('user:' + id, u); await r.set('email:' + email, id); await r.set('uname:' + username.toLowerCase(), id);
     return { token: await newSession(id, req), me: own(u) };
   },
-  async '/auth/login'(req, b) {
-    const id = await r.get('email:' + String(b.email || '').trim().toLowerCase());
-    const u = id && (await r.get('user:' + id));
-    if (!u || hp(b.password || '', u.salt) !== u.pw) return { err: 'Wrong email or password' };
-    if (u.sec && u.sec.two && (!b.two || hs(b.two, id) !== u.sec.two)) return { need2fa: true, err: b.two ? 'Wrong two-step password' : undefined };
-    return { token: await newSession(id, req), me: own(u) };
+  async '/auth/login-start'(req, b) {
+    const email = String(b.email || '').trim().toLowerCase();
+    if (!(await rl('ls:' + email, 5))) return { err: 'Too many tries, wait a minute' };
+    const id = await r.get('email:' + email), u = id && (await r.get('user:' + id));
+    if (!u) return { err: 'No account with this email. Create one first.' };
+    const via = await sendCode(u, 'login', 'Login');
+    return via ? { ok: true, via } : { err: 'No logged-in device and email service is not set up, so the code cannot be delivered.' };
+  },
+  async '/auth/login-verify'(req, b) {
+    const email = String(b.email || '').trim().toLowerCase();
+    if (!(await rl('lv:' + email, 10))) return { err: 'Too many tries, wait a minute' };
+    const id = await r.get('email:' + email), u = id && (await r.get('user:' + id));
+    if (!u || !(await checkCode(id, 'login', b.code))) return { err: 'Wrong or expired code' };
+    if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(id) };
+    return finish(u, req);
+  },
+  async '/auth/login-2fa'(req, b) {
+    const p = await r.get('pend:' + b.pend);
+    if (!p) return { err: 'Session expired, start again' };
+    const u = await r.get('user:' + p.uid);
+    if (++p.tries > 5) { await r.del('pend:' + b.pend); return { err: 'Too many wrong tries' }; }
+    if (hs(b.two || '', u.id) !== u.sec.two) { await r.set('pend:' + b.pend, p, { ex: 600 }); return { err: 'Wrong two-step password' }; }
+    await r.del('pend:' + b.pend);
+    return finish(u, req);
+  },
+  async '/auth/forgot'(req, b) {
+    const p = await r.get('pend:' + b.pend);
+    if (!p) return { err: 'Session expired, start again' };
+    const u = await r.get('user:' + p.uid);
+    return (await sendCode(u, 'reset', 'Password reset')) ? { ok: true } : { err: 'Email service is not set up (RESEND_API_KEY), recovery code cannot be sent.' };
+  },
+  async '/auth/forgot-confirm'(req, b) {
+    const p = await r.get('pend:' + b.pend);
+    if (!p || !(await checkCode(p.uid, 'reset', b.code))) return { err: 'Wrong or expired code' };
+    const u = await r.get('user:' + p.uid);
+    delete u.sec.two; await r.set('user:' + u.id, u); await r.del('pend:' + b.pend);
+    return finish(u, req);
+  },
+  async '/auth/qr-create'(req) {
+    const id = crypto.randomBytes(12).toString('hex'), secret = rid();
+    await r.set('qr:' + id, { secret, st: 'wait', ua: (req.headers['user-agent'] || '').slice(0, 140) }, { ex: 180 });
+    return { id, secret };
+  },
+  async '/auth/qr-status'(req, b) {
+    const o = await r.get('qr:' + b.id);
+    if (!o || o.secret !== b.secret) return { err: 'expired' };
+    if (o.st !== 'ok') return { wait: true };
+    await r.del('qr:' + b.id);
+    const u = await r.get('user:' + o.uid);
+    if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(u.id) };
+    return finish(u, req);
   }
 };
 
@@ -183,15 +293,6 @@ A['/me/update'] = async (c, b) => {
     await r.del('uname:' + u.username.toLowerCase());
     await r.set('uname:' + nu.toLowerCase(), c.uid);
     u.username = nu;
-  }
-  if (b.email !== undefined && b.email !== u.email) {
-    const ne = String(b.email).trim().toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(ne)) return { err: 'Invalid email' };
-    if (hp(b.password || '', u.salt) !== u.pw) return { err: 'Password required to change email' };
-    if (await r.get('email:' + ne)) return { err: 'Email already used' };
-    await r.del('email:' + u.email);
-    await r.set('email:' + ne, c.uid);
-    u.email = ne;
   }
   await r.set('user:' + c.uid, u);
   return { me: own(u) };
@@ -350,12 +451,40 @@ A['/sec/verify'] = async (c, b) => {
   return { ok: !!(u.sec && u.sec[k] && hs(b.value || '', c.uid) === u.sec[k]) };
 };
 A['/devices'] = async c => {
-  const out = [];
+  const u = await r.get('user:' + c.uid), ttl = u.autoOut || 15552e6, out = [];
   for (const sid of await r.smembers('us:' + c.uid)) {
     const s = await r.get('sess:' + sid);
-    if (s) out.push({ id: sid, ua: s.ua, ts: s.ts, current: sid === c.sid }); else await r.srem('us:' + c.uid, sid);
+    if (s && now() - (s.last || s.ts) <= ttl) out.push({ id: sid, ua: s.ua, ts: s.ts, last: s.last || s.ts, current: sid === c.sid });
+    else { await r.del('sess:' + sid); await r.srem('us:' + c.uid, sid); }
   }
   return { devices: out };
+};
+A['/devices/ttl'] = async (c, b) => {
+  if (![6048e5, 2592e6, 7776e6, 15552e6, 31536e6].includes(+b.ms)) return { err: 'invalid' };
+  const u = await r.get('user:' + c.uid); u.autoOut = +b.ms; await r.set('user:' + c.uid, u);
+  return { me: own(u) };
+};
+A['/auth/qr-approve'] = async (c, b) => {
+  const o = await r.get('qr:' + b.id);
+  if (!o || o.st !== 'wait') return { err: 'QR code expired. Refresh it on the new device.' };
+  if (!b.confirm) return { ua: o.ua };
+  o.st = 'ok'; o.uid = c.uid; await r.set('qr:' + b.id, o, { ex: 60 });
+  return { ok: true };
+};
+A['/me/email-start'] = async (c, b) => {
+  const ne = String(b.email || '').trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(ne)) return { err: 'Invalid email' };
+  if (await r.get('email:' + ne)) return { err: 'Email already used' };
+  await r.set('ne:' + c.uid, ne, { ex: 600 });
+  return (await sendCode(await r.get('user:' + c.uid), 'email', 'Email change')) ? { ok: true } : { err: 'Could not send code' };
+};
+A['/me/email-confirm'] = async (c, b) => {
+  const ne = await r.get('ne:' + c.uid);
+  if (!ne || !(await checkCode(c.uid, 'email', b.code))) return { err: 'Wrong or expired code' };
+  const u = await r.get('user:' + c.uid);
+  await r.del('email:' + u.email); await r.set('email:' + ne, c.uid); u.email = ne;
+  await r.set('user:' + c.uid, u);
+  return { me: own(u) };
 };
 A['/devices/logout'] = async (c, b) => {
   if (!(await r.sismember('us:' + c.uid, b.id))) return { err: 'not found' };
@@ -366,15 +495,11 @@ A['/auth/logout'] = async c => { await r.del('sess:' + c.sid); await r.srem('us:
 A['/account/delete-start'] = async c => {
   const u = await r.get('user:' + c.uid);
   if (!(u.sec && (u.sec.two || u.sec.pass))) return { err: 'setup2fa' };
-  const code = String(crypto.randomInt(100000, 999999));
-  await r.set('otp:' + c.uid, { code: hs(code, c.uid), exp: now() + 600000 }, { ex: 600 });
-  const sent = await mail(u.email, 'MS Chat account deletion code', 'Your code: ' + code + ' (valid 10 minutes). If this was not you, ignore this email.');
-  if (!sent && process.env.OTP_DEBUG !== '1') return { err: 'Email service not configured (set RESEND_API_KEY)' };
-  return { ok: true, need: { two: !!u.sec.two, pass: !!u.sec.pass }, debug: !sent ? code : undefined };
+  return (await sendCode(u, 'del', 'Account deletion')) ? { ok: true, need: { two: !!u.sec.two, pass: !!u.sec.pass } } : { err: 'Could not send code' };
 };
 A['/account/delete-confirm'] = async (c, b) => {
-  const u = await r.get('user:' + c.uid), o = await r.get('otp:' + c.uid);
-  if (!o || o.exp < now() || hs(String(b.code || ''), c.uid) !== o.code) return { err: 'Wrong or expired email code' };
+  const u = await r.get('user:' + c.uid);
+  if (!(await checkCode(c.uid, 'del', b.code))) return { err: 'Wrong or expired code' };
   if (u.sec.two && hs(b.two || '', c.uid) !== u.sec.two) return { err: 'Wrong two-step password' };
   if (u.sec.pass && hs(b.pass || '', c.uid) !== u.sec.pass) return { err: 'Wrong passcode' };
   for (const sid of await r.smembers('us:' + c.uid)) await r.del('sess:' + sid);
@@ -391,12 +516,21 @@ A['/notif/action'] = async (c, b) => {
   return { err: 'bad action' };
 };
 
+A['/push/test'] = async c => {
+  const a = fb(), toks = await r.smembers('fcm:' + c.uid);
+  if (!a) return { err: 'Server Firebase not configured: ' + (fbErr || 'FIREBASE_SERVICE_ACCOUNT env missing') };
+  if (!toks.length) return { err: 'No push token saved for this account. Tap "Enable notifications" on this device first.' };
+  const out = await a.messaging().sendEachForMulticast({ tokens: toks, data: { title: 'MS Chat', body: 'Test notification: push is working', chatId: 's:' + c.uid, msgId: '0', ts: String(now()) }, webpush: { headers: { Urgency: 'high' } } });
+  return { ok: out.successCount, failed: out.failureCount, codes: out.responses.filter(x => !x.success).map(x => x.error && x.error.code) };
+};
+
 /* Uploads go browser -> Vercel Blob directly (up to 70 MB) */
+const blobToken = () => process.env.BLOB_READ_WRITE_TOKEN || (Object.entries(process.env).find(([k]) => k.endsWith('BLOB_READ_WRITE_TOKEN')) || [])[1];
 async function upload(req, res, body) {
-  const { handleUpload } = require('@vercel/blob/client');
   try {
+    const { handleUpload } = require('@vercel/blob/client');
     const j = await handleUpload({
-      body, request: req,
+      body, request: req, token: blobToken(),
       onBeforeGenerateToken: async (pathname, payload) => {
         if (!payload || !(await r.get('sess:' + payload))) throw new Error('unauthorized');
         return { maximumSizeInBytes: 70 * 1048576, addRandomSuffix: true };
@@ -404,7 +538,7 @@ async function upload(req, res, body) {
       onUploadCompleted: async () => {}
     });
     return res.status(200).json(j);
-  } catch (e) { return res.status(400).json({ error: e.message }); }
+  } catch (e) { console.error('upload', e.message); return res.status(400).json({ error: e.message }); }
 }
 
 module.exports = async (req, res) => {
@@ -413,7 +547,7 @@ module.exports = async (req, res) => {
   const q = req.query || {};
   const b = (req.body && typeof req.body === 'object' && req.body) || {};
   try {
-    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)) });
+    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!blobToken(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT });
     if (p === '/upload') return upload(req, res, b);
     if (open[p]) return res.json(await open[p](req, b));
     const c = await auth(req);
