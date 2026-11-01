@@ -1,43 +1,34 @@
-# MS Chat v2 (Vercel + Upstash Redis + Firebase Push + Vercel Blob)
+# MS Chat v3 (Vercel + Upstash Redis + Firebase Push + Vercel Blob)
 
-Telegram-style installable PWA.
 Domain: https://ms-chat-messager.vercel.app
 
-## Files (all in repo root, except api/)
-| File | Kaam |
-|---|---|
-| `index.html` | Poori app UI (badges design, chat, settings) |
-| `api/index.js` | Backend (ek serverless function) |
-| `notification.js` | Client: permission, FCM token, sound, badge, deep link |
-| `sw.js` | Cache + notification buttons (Reply / Mark as read / Mute) |
-| `firebase-messaging-sw.js` | Asli service worker (sw.js ko import karta hai) + FCM background push |
-| `vercel.json` | Rewrites (`/api/*`, `/{username}`) + headers |
-| `package.json` | Dependencies |
+## Files (repo root; only `index.js` goes inside `api/`)
+`index.html` · `api/index.js` · `notification.js` · `sw.js` · `firebase-messaging-sw.js` · `vercel.json` · `package.json` · `manifest.json` + icons + `notification.mp3` (already uploaded)
 
-Public assets (already hain): `icon-192.png`, `icon-512.png`, `maskable-512.png`, `notification.mp3`, `manifest.json`
+## Pehle red × fix (GitHub / Vercel)
+Red × = Vercel deployment fail. Sabab: purani `package.json` mein `"engines": {"node": "20.x"}` (Vercel ne Node 20 band kar diya) aur `vercel.json` mein `memory`. Dono naye files mein hata diye hain. Agar phir red ho to Vercel -> Deployments -> failed deployment -> **Build Logs** kholo, wahan exact line likhi hogi.
 
-## Deploy
-1. Sab files GitHub repo mein daalo. `api/index.js` folder ke andar hi rahe.
-2. Vercel -> Add New Project -> repo import -> Framework: **Other**, build command khali.
-3. Vercel -> Storage:
-   - **Upstash Redis** connect karo (KV_REST_API_URL / KV_REST_API_TOKEN auto aa jate hain).
-   - **Blob** store connect karo (`BLOB_READ_WRITE_TOKEN` auto aata hai) - photo/video/audio/files ke liye.
-4. Firebase Console (project `ms-chat-517b8`):
-   - Project settings -> **Cloud Messaging** -> *Web Push certificates* -> Generate key pair -> public key copy karo
-     -> `notification.js` mein `VAPID_KEY` ki jagah paste karo.
-   - Project settings -> **Service accounts** -> *Generate new private key* -> JSON file download.
-     Poora JSON Vercel Environment Variable `FIREBASE_SERVICE_ACCOUNT` mein paste karo. **Ye JSON kabhi GitHub mein mat daalna.**
-5. Optional env: `AUTH_SECRET` (lambi random text), `SMTP_*` ya `RESEND_API_KEY` (email OTP ke liye).
-6. Redeploy -> `https://ms-chat-messager.vercel.app/api/health` -> `{"ok":true,"db":true}` aana chahiye.
-7. Chrome Android -> menu -> **Install app**.
+## Vercel setup
+1. Storage: **Upstash Redis** connect (KV_REST_API_URL / TOKEN).
+2. Storage: **Blob** connect (BLOB_READ_WRITE_TOKEN). Iske bina "Failed to retrieve the client token" aata hai. Connect karke **Redeploy** zaroor karo.
+3. Environment Variables:
+   - `FIREBASE_SERVICE_ACCOUNT` = Firebase Console -> Project settings -> Service accounts -> Generate new private key -> poori JSON paste (GitHub par kabhi nahi).
+   - `AUTH_SECRET` = koi lambi random text.
+   - `RESEND_API_KEY` (+ `MAIL_FROM`) = optional: signup email verification + "Forgot password" recovery email ke liye (resend.com free).
+4. Redeploy. Check: `/api/health` -> `{"ok":true,"db":true,"blob":true,"firebase":true}`. Jo `false` ho wahi env missing hai.
 
-## Notifications kaise kaam karte hain
-- Server **data-only** FCM message bhejta hai: `title, body, chatId, msgId, icon, ts`.
-- `firebase-messaging-sw.js` unhe icon `icon-512.png` + badge ke saath dikhata hai, 3 buttons: **Reply**, **Mark as read**, **Mute (1h)**.
-- Notification tap karo -> seedha usi chat / message par khulta hai (`/?chat=ID&msg=ID`).
-- Buttons `/api/notif/action` ko call karte hain (login token IndexedDB mein SW ke paas save hota hai).
+## Notifications check (sound aaya par display nahi)
+1. Phone par app kholo -> list ke upar **Enable notifications** -> Allow.
+2. Settings -> **Send test notification**. App minimise karo.
+3. Error aaye to wohi bata dega (Firebase env missing / token missing). Android: Chrome ki Site settings mein Notifications Allowed hon, aur battery saver app ko band na kare.
+
+## Login system
+- **Email login**: email -> code **MS SPAM CHAT** (verified, "Service") chat mein aapke already-logged-in devices par aata hai (agar koi device logged-in nahi to email par, Resend chahiye) -> Two-step verification ho to password, warna login.
+- **Forgot password** (two-step ka): email par code -> two-step hat jata hai.
+- **QR login**: naye device par "Login with QR" -> purane phone par Settings > Privacy and security > Devices > **Add Device** -> scan. OTP nahi aata; two-step ho to sirf wahi poochta hai.
+- **Auto logout**: Devices mein 1 week / 1 month / 3 months / **6 months (default)** / 1 year. Itne din unused device khud logout.
 
 ## Honest limits
-- Notification sound: browser push mein custom mp3 background mein play nahi hota (OS ki default awaaz aati hai). `notification.mp3` tab bajta hai jab app khuli ho.
-- Inline **Reply** box Android Chrome par chalta hai. iPhone par push ke liye app Home Screen par install honi chahiye (iOS 16.4+), aur buttons limited hote hain.
-- Vercel function body limit ~4.5 MB hai, isliye bade files (video, 70 MB Saved Messages) browser se **seedha Blob par upload** hongi (client upload token), function se nahi.
+- Background notification mein custom mp3 nahi bajta (OS ki awaaz); mp3 sirf app khuli hone par.
+- Passkey (WebAuthn) abhi nahi hai; Passcode lock + Two-step hai.
+- Photo/video editing (draw/mark) abhi nahi hai.
