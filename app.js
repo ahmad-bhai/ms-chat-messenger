@@ -47,11 +47,11 @@ document.addEventListener('click',e=>{if(e.target.id==='sh'){closeSh();return}if
 /* ---------- auth ---------- */
 const fld=(i,ph,id,ty)=>`<label class="badge row fld">${tl(i)}<input id="${id}" type="${ty||'text'}" placeholder="${ph}" class="fi" autocomplete="off"></label>`;
 const blobs='<div class="goo"><i class="gb" style="width:220px;height:220px;left:-60px;top:40px"></i><i class="gb" style="width:260px;height:260px;right:-90px;top:230px;animation-delay:-3s"></i><i class="gb" style="width:200px;height:200px;left:30%;bottom:-70px;animation-delay:-6s"></i></div>';
-function authScr(add){document.body.classList.remove('inl');let step='home',em='',pend='',needCode=0,qt,R={};
+function authScr(add){document.body.classList.remove('inl');let step='home',em='',pend='',needCode=0,viaMode='email',qt,R={};
 const fin=j=>{if(!j.token)return;clearInterval(qt);const i=S.ac.findIndex(a=>a.id===j.me.id);if(i>=0)S.ac[i].token=j.token;else S.ac.push({token:j.token,id:j.me.id,name:j.me.name});S.ai=i>=0?i:S.ac.length-1;sv();boot()};
 const body=()=>({home:`<button class="btn" data-s="email">${ic('mail')} Login with email</button><button class="btn alt" data-s="qr">${ic('qr')} Login with QR</button><p class="lnk" data-s="reg">Create new account</p>`,
 email:fld('mail','Email','ae','email')+'<button class="btn" id="go">Send code</button>',
-code:'<p class="hint">Enter the code sent by <b>MS SPAM CHAT</b> to your logged-in devices (or to your email)</p>'+fld('lock','6-digit code','ac','tel')+'<button class="btn" id="go">Continue</button>',
+code:`<p class="hint">Enter the 6-digit verification code sent to <b>${viaMode==='chat'?'MS SPAM CHAT on your logged-in devices':'your email ('+esc(em)+')'}</b></p>`+fld('lock','6-digit code','ac','tel')+'<button class="btn" id="go">Continue</button>',
 '2fa':'<p class="hint">Two-step verification is on</p>'+fld('lock','Password','ap','password')+'<button class="btn" id="go">Login</button><p class="lnk" id="fg">Forgot password?</p>',
 fgc:'<p class="hint">Recovery code sent to your email</p>'+fld('lock','Email code','ac','tel')+'<button class="btn" id="go">Reset and login</button>',
 reg:fld('person','Name','an')+fld('mail','Email','ae','email')+fld('person','Username (optional)','au')+(needCode?fld('lock','Email code','ac','tel'):'')+`<button class="btn" id="go">${needCode?'Verify':'Create account'}</button>`,
@@ -62,7 +62,7 @@ document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{step=b.dataset.s
 Object.entries(R).forEach(([k,v])=>{const e=$('#'+k);if(e)e.value=v});
 const g=$('#go');if(g)g.onclick=go;const f=$('#fg');if(f)f.onclick=forgot;if(step==='qr')qr();const fi=document.querySelector('.au input');fi&&fi.focus()};
 const go=async()=>{const v=id=>($('#'+id)||{}).value||'';let j;
-if(step==='email'){j=await api('/auth/login-start',{email:v('ae')});if(!ok(j))return;em=v('ae').trim();step='code';draw();toast(j.via==='email'?'Code sent to your email':'Code sent to MS SPAM CHAT on your logged-in devices')}
+if(step==='email'){j=await api('/auth/login-start',{email:v('ae')});if(!ok(j))return;em=v('ae').trim();viaMode=j.via||'email';step='code';draw();toast(viaMode==='email'?'Code sent to your email':'Code sent to MS SPAM CHAT on your logged-in devices')}
 else if(step==='code'){j=await api('/auth/login-verify',{email:em,code:v('ac')});if(!ok(j))return;if(j.need2fa){pend=j.pend;step='2fa';draw()}else fin(j)}
 else if(step==='2fa'){j=await api('/auth/login-2fa',{pend,two:v('ap')});if(ok(j))fin(j)}
 else if(step==='fgc'){j=await api('/auth/forgot-confirm',{pend,code:v('ac')});if(ok(j))fin(j)}
