@@ -263,12 +263,22 @@ async function handleAdminApiToken(req, res, email, active) {
   if (!id0) return res.status(404).json({ err: 'User not found' });
   const uid = String(id0);
 
+  // List nikalne ka naya aur reliable tareeqa
+  const getUserKeys = async () => {
+    let cursor = 0;
+    let foundKeys = [];
+    do {
+      const [newCursor, keys] = await r.scan(cursor, { match: 'apitoken:*', count: 100 });
+      cursor = newCursor;
+      for (const k of keys) {
+        if (await r.get(k) === uid) foundKeys.push(k.replace('apitoken:', ''));
+      }
+    } while (cursor !== 0 && cursor !== "0");
+    return foundKeys;
+  };
+
   if (active === 'true') {
-    const keys = await r.keys('apitoken:*');
-    let userKeys = [];
-    for (const k of keys) {
-      if (await r.get(k) === uid) userKeys.push(k.replace('apitoken:', ''));
-    }
+    const userKeys = await getUserKeys();
 
     if (userKeys.length >= 3) {
       return res.status(400).json({ err: 'Max limit reached. You can only have 3 active API keys. Delete one first.' });
@@ -276,27 +286,41 @@ async function handleAdminApiToken(req, res, email, active) {
 
     const token = 'ms_dev_' + crypto.randomBytes(16).toString('hex');
     await r.set('apitoken:' + token, uid);
+    
+    // Save user -> tokens mapping directly for fast lookup (Optional but good)
+    await r.sadd('usertokens:' + uid, token);
+
     return res.json({ ok: true, token });
   } else if (active === 'list') {
-    const keys = await r.keys('apitoken:*');
-    let userKeys = [];
-    for (const k of keys) {
-      if (await r.get(k) === uid) userKeys.push(k.replace('apitoken:', ''));
+    // Fast lookup approach
+    const savedTokens = await r.smembers('usertokens:' + uid);
+    let validTokens = [];
+    for (const t of savedTokens) {
+      if (await r.get('apitoken:' + t) === uid) validTokens.push(t);
     }
-    return res.json({ ok: true, keys: userKeys });
+    
+    // Fallback to scan if sadd failed earlier
+    if (validTokens.length === 0) {
+       validTokens = await getUserKeys();
+    }
+
+    return res.json({ ok: true, keys: validTokens });
   } else if (active === 'delete') {
     const token = req.query.token || (req.body && req.body.token);
     if (!token) return res.status(400).json({ err: 'Token required' });
     if (await r.get('apitoken:' + token) === uid) {
       await r.del('apitoken:' + token);
+      await r.srem('usertokens:' + uid, token);
       return res.json({ ok: true, message: 'Key deleted' });
     }
     return res.status(404).json({ err: 'Key not found' });
   } else {
-    const keys = await r.keys('apitoken:*');
+    const userKeys = await getUserKeys();
     let revoked = 0;
-    for (const k of keys) {
-      if (await r.get(k) === uid) { await r.del(k); revoked++; }
+    for (const k of userKeys) { 
+      await r.del('apitoken:' + k); 
+      await r.srem('usertokens:' + uid, k);
+      revoked++; 
     }
     return res.json({ ok: true, message: `Revoked ${revoked} API tokens for this user.` });
   }
