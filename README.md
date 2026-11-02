@@ -1,99 +1,64 @@
-# MS Chat v3 (Full-Stack Messenger & Developer API)
+# MS Chat - Modern Messaging Platform
 
-**Live Domain:** [https://ms-chat-messenger.vercel.app/](https://ms-chat-messenger.vercel.app/)
-
-MS Chat is a modern, real-time messaging application built on Vercel Serverless Functions, Upstash Redis, Firebase, and Vercel Blob. It features a full authentication system, real-time updates, media sharing, push notifications, and a **Developer API system** allowing users to generate API keys and build third-party integrations.
+MS Chat is a fast, secure, and feature-rich real-time messaging application. It combines the best features of modern messengers with a robust Developer API, allowing users to build third-party applications and integrations.
 
 ---
 
-## 📁 Project Structure
-Keep these files in the repo root (only `api/index.js` and `api.html` go inside the `api/` and root directory respectively):
-- `index.html` (Main Chat UI)
-- `api.html` (Developer API Dashboard)
-- `api/index.js` (The main backend Serverless Function)
-- `notification.js` · `sw.js` · `firebase-messaging-sw.js`
-- `vercel.json` · `package.json` · `manifest.json`
-- Icons & `notification.mp3`
+## ✨ Core Features
+
+### 1. Real-Time Messaging
+- **Instant Delivery:** Messages are delivered instantly using a highly optimized polling and update system.
+- **Rich Text Formatting:** Support for Bold, Italic, Monospace, Strikethrough, Underline, and Spoilers (blurred text until clicked).
+- **Message Actions:** Reply to specific messages, Forward messages, Pin important messages, and React with Emojis.
+- **Edit & Delete:** Edit sent messages or delete them (for yourself or for everyone).
+- **Status Ticks:** Single tick for sent, double tick for delivered, and colored double tick for read.
+
+### 2. Authentication & Security
+- **Email OTP Login:** Secure, passwordless login using 6-digit One-Time Passwords sent directly to your email.
+- **QR Code Login:** Log in on a new device by simply scanning a QR code from an already logged-in device (just like WhatsApp Web).
+- **Two-Step Verification (2FA):** Add an extra layer of security to your account with a custom 2FA password.
+- **Passcode Lock:** Lock the app with a local passcode to prevent unauthorized access if someone gets your phone.
+- **Device Management:** View all active sessions, see their last active time, and remotely log out other devices. Includes an auto-logout feature for inactive devices.
+
+### 3. Media & Sharing
+- **High-Quality Media:** Share photos, videos, audio files, and documents up to 2 GB.
+- **Voice Notes:** Record and send voice messages with visual waveforms.
+- **In-App Camera:** Take photos directly from the app.
+- **Image Editor:** Crop, rotate, or draw on photos before sending.
+- **Saved Messages:** A personal cloud storage space (up to 70 MB) to save notes, links, and files.
+
+### 4. User Experience (UI/UX)
+- **Dark & Light Modes:** Seamless switching between dark and light themes.
+- **Customizable Chat:** Change text sizes, set custom wallpapers (from gallery or URL), and adjust message corner radius.
+- **Animations:** A smooth, "slime-like" fluid animation system that scales based on your device's performance.
+- **Privacy Controls:** Hide your "Last Seen" status from other users.
+- **Block System:** Block users to prevent them from messaging or calling you.
+
+### 5. Push Notifications
+- **Real-Time Alerts:** Get instant notifications for new messages even when the app is closed (powered by Firebase).
+- **Quick Reply:** Reply to messages directly from the notification tray.
+- **Custom Sounds:** Enjoy custom in-app notification sounds.
 
 ---
 
-## 🚀 Vercel Setup & Deployment
+## 🛠️ Developer API (Build Your Own Client)
 
-### 1. Fixing the "Red X" (Deployment Fail)
-If your Vercel deployment fails, it is usually due to Node.js version mismatches. Remove `"engines": {"node": "20.x"}` from `package.json` and ensure `memory` is removed from `vercel.json`. If it still fails, check **Vercel -> Deployments -> Build Logs** for exact errors.
+MS Chat includes a powerful, Telegram-like Developer API. You can generate API keys and use them to build your own custom apps, bots, or web clients using the MS Chat backend.
 
-### 2. Database & Storage (Required)
-- **Upstash Redis:** Connect via Vercel Storage tab. This is required for sessions, messages, and API tokens (`KV_REST_API_URL` / `KV_REST_API_TOKEN`).
-- **Vercel Blob:** Connect via Vercel Storage tab. Required for fallback media uploads (`BLOB_READ_WRITE_TOKEN`).
-- *Note: Whenever you connect a new storage or change Environment Variables, you MUST trigger a Redeploy.*
+### How to use the Developer API:
+1. **Access the Dashboard:** Go to your app's URL and navigate to the **Developer API** page.
+2. **Verify Identity:** Enter your registered MS Chat email. You will receive an OTP in your email inbox.
+3. **Generate API Keys:** Once verified, you can generate up to **3 active API keys**.
+4. **Integrate:** Use the provided API Key in your custom applications. You can copy the auto-generated code snippets for Node.js, JavaScript, Python, PHP, or cURL directly from the dashboard.
 
-### 3. Environment Variables
-Go to Vercel Project Settings -> Environment Variables and add:
-- `FIREBASE_SERVICE_ACCOUNT`: Paste the entire JSON from Firebase Console -> Project Settings -> Service Accounts -> Generate new private key. (Never commit this to GitHub).
-- `AUTH_SECRET`: Any long random string (used for hashing and API security).
-- `EMAILJS_PUBLIC_KEY`, `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`: For sending OTPs via email.
-- `EMAILJS_PRIVATE_KEY`: **Required** if "Use Private Key" is enabled in your EmailJS account settings.
-- `BLOB_READ_WRITE_TOKEN`: Auto-added when you connect Vercel Blob.
-
-### 4. Verify Health
-After redeploying, visit `/api/health` (e.g., `https://your-domain.vercel.app/api/health`). 
-Expected response: `{"ok":true, "db":true, "blob":true, "firebase":true, "emailjs":true}`. If any is `false`, that specific environment variable is missing.
+*Note: The Developer API allows full access to messaging, chat lists, and user profiles, but account registration (Signup) is disabled via API for security reasons.*
 
 ---
 
-## 🔔 Push Notifications Setup
-1. Open the app on your phone -> Tap **Enable notifications** at the top of the chat list -> Allow.
-2. Go to Settings -> **Send test notification**. Minimize the app to see the push.
-3. If it fails, the error toast will tell you why (e.g., missing Firebase env or token).
-4. *Android tip:* Ensure Chrome Site Settings have Notifications allowed, and Battery Saver is not killing the app.
+## ⚠️ Known Limitations
+- **Background Notifications:** Custom in-app sounds only play when the app is open. Background notifications will use the default operating system sound.
+- **Media Editing:** Complex video editing or advanced photo filters are not yet available.
+- **Passkeys:** Biometric login (FaceID / Fingerprint) is currently not supported.
 
 ---
-
-## 🔐 Authentication System
-- **Email Login:** Enter email -> OTP is sent via Email (or via "MS SPAM CHAT" if already logged in on another device) -> Enter code -> Login.
-- **Forgot Password:** (For Two-Step accounts) Sends a recovery code to email, which removes the two-step password.
-- **QR Login:** On a new device, choose "Login with QR". On your logged-in phone, go to Settings > Privacy and Security > Devices > **Add Device** and scan the code.
-- **Auto Logout:** Devices auto-logout after 1 week, 1 month, 3 months, 6 months (default), or 1 year of inactivity.
-
----
-
-## 🛠️ Developer API System
-
-MS Chat includes a full API system similar to the Telegram Bot API, allowing users to build their own clients or integrations.
-
-### 1. Accessing the Developer Dashboard
-Navigate to `https://your-domain.vercel.app/api.html` (or wherever you host `api.html`).
-1. Enter your MS Chat registered email.
-2. Click **Send OTP**. The OTP will be sent directly to your email.
-3. Enter the OTP to verify.
-4. You can generate up to **3 active API keys**. You can copy them or delete/revoke them at any time.
-
-### 2. Using the API Endpoints
-Once you have an API key (e.g., `ms_dev_xxxx`), you can use it to authenticate requests. 
-**Base URL:** `https://your-domain.vercel.app/api/ms-api/{YOUR_API_KEY}`
-
-**Example Routes:**
-- `GET /chats` - Fetch your chat list.
-- `GET /msgs?chat={chatId}` - Fetch messages for a specific chat.
-- `POST /send` - Send a message. Body: `{"chat": "p:123:456", "text": "Hello"}`
-- `GET /me` - Get your profile info.
-
-*Note: For security reasons, `auth/register` (Signup) is disabled via the Developer API. You can only access existing accounts using the API key.*
-
----
-
-## 📸 Media Upload (Firebase Storage, max 2 GB)
-1. Firebase Console -> **Authentication** -> Get started (just enable it, no providers needed).
-2. Firebase Console -> **Storage** -> Get started (Firebase Blaze plan may be required).
-3. Paste these **Storage Rules** and Publish:
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /u/{uid}/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == uid
-                   && request.resource.size < 2 * 1024 * 1024 * 1024;
-    }
-  }
-}
+*Experience secure, fast, and flexible messaging with MS Chat.*
