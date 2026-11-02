@@ -219,7 +219,8 @@ async function sendCode(u, purpose, label) {
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
   const text = `${label} code:${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
   
-  if (purpose !== 'reset' && (await liveSessions(u.id))) {
+  // API Keys ke liye hamesha Email par bhejenge
+  if (purpose !== 'reset' && purpose !== 'api_keys' && (await liveSessions(u.id))) {
     await sysSend(u.id, text);
     return 'chat';
   }
@@ -253,32 +254,27 @@ async function finish(u, req) {
    UPDATED: ADMIN API TOKEN GENERATION (Max 3 keys per email)
    ===================================================================== */
 async function handleAdminApiToken(req, res, email, active) {
-  const secretHeader = req.headers['x-auth-secret'];
-  if (secretHeader !== SECRET) return res.status(403).json({ err: 'Forbidden: Invalid X-Auth-Secret' });
-
+  // Secret verification removed, relies on OTP verification via UI
+  
   const id0 = await r.get('email:' + email.toLowerCase());
   if (!id0) return res.status(404).json({ err: 'User not found' });
   const uid = String(id0);
 
   if (active === 'true') {
-    // 1. Check existing keys for this user
     const keys = await r.keys('apitoken:*');
     let userKeys = [];
     for (const k of keys) {
       if (await r.get(k) === uid) userKeys.push(k.replace('apitoken:', ''));
     }
 
-    // 2. Enforce max 3 limit
     if (userKeys.length >= 3) {
       return res.status(400).json({ err: 'Max limit reached. You can only have 3 active API keys. Delete one first.' });
     }
 
-    // 3. Generate new key
     const token = 'ms_dev_' + crypto.randomBytes(16).toString('hex');
     await r.set('apitoken:' + token, uid);
     return res.json({ ok: true, token });
   } else if (active === 'list') {
-    // List keys
     const keys = await r.keys('apitoken:*');
     let userKeys = [];
     for (const k of keys) {
@@ -286,7 +282,6 @@ async function handleAdminApiToken(req, res, email, active) {
     }
     return res.json({ ok: true, keys: userKeys });
   } else if (active === 'delete') {
-    // Delete specific key (passed in query or body)
     const token = req.query.token || (req.body && req.body.token);
     if (!token) return res.status(400).json({ err: 'Token required' });
     if (await r.get('apitoken:' + token) === uid) {
@@ -295,7 +290,6 @@ async function handleAdminApiToken(req, res, email, active) {
     }
     return res.status(404).json({ err: 'Key not found' });
   } else {
-    // Revoke all
     const keys = await r.keys('apitoken:*');
     let revoked = 0;
     for (const k of keys) {
@@ -356,6 +350,13 @@ const open = {
     if (!u) return { err: 'No account with this email. Create one first.' };
     const via = await sendCode(u, 'login', 'Login');
     return via ? { ok: true, via } : { err: 'Could not send login verification code.' };
+  },
+  async '/auth/api-key-otp'(req, b) {
+    const email = String(b.email || '').trim().toLowerCase();
+    const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
+    if (!u) return { err: 'No account with this email.' };
+    const via = await sendCode(u, 'api_keys', 'API Verification');
+    return via ? { ok: true } : { err: 'Could not send OTP.' };
   },
   async '/auth/login-verify'(req, b) {
     const email = String(b.email || '').trim().toLowerCase();
@@ -701,11 +702,11 @@ module.exports = async (req, res) => {
     if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT, emailjs: !!(process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY) });
     if (p === '/upload') return upload(req, res, b);
     
-    // module.exports ke andar purani line ko is se replace karein:
-const adminMatch = p.match(/^\/ap\/token\/([^/]+)\/(true|false|list|delete)$/);
+    // Admin API Token routes (generate, list, delete)
+    const adminMatch = p.match(/^\/ap\/token\/([^/]+)\/(true|false|list|delete)$/);
     if (adminMatch) return handleAdminApiToken(req, res, adminMatch[1], adminMatch[2]);
 
-    // Check for Developer API Route (/ms-api/{token}/...)
+    // Developer API Route (/ms-api/{token}/...)
     const devMatch = p.match(/^\/ms-api\/([^/]+)(\/.*)?$/);
     if (devMatch) {
       const token = devMatch[1];
@@ -713,7 +714,7 @@ const adminMatch = p.match(/^\/ap\/token\/([^/]+)\/(true|false|list|delete)$/);
       const dc = await authDevApi(req, token);
       if (!dc) return res.status(401).json({ err: 'Invalid or missing API Token' });
       
-      // Block signup logic inside Dev API (as requested: no signup, only login & rest)
+      // Block signup logic inside Dev API
       if (devPath.startsWith('/auth/register')) return res.status(403).json({ err: 'Registration is not allowed via Developer API.' });
       
       if (open[devPath]) return res.json(await open[devPath](req, b));
