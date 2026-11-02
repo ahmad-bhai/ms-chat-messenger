@@ -29,23 +29,35 @@ async function mail(to, subject, text, passcode) {
   const serviceId = process.env.EMAILJS_SERVICE_ID || 'service_p2lea5f';
   const templateId = process.env.EMAILJS_TEMPLATE_ID || 'template_cb0psbc';
   
-  const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      service_id: serviceId,
-      template_id: templateId,
-      user_id: pubKey,
-      template_params: {
-        email: to,
-        passcode: passcode,
-        subject: subject,
-        message: text
-      }
-    })
-  });
-  return x.ok;
+  try {
+    const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: serviceId,
+        template_id: templateId,
+        user_id: pubKey,
+        template_params: {
+          email: to,
+          passcode: passcode,
+          subject: subject,
+          message: text
+        }
+      })
+    });
+    
+    if (!x.ok) {
+      const errText = await x.text();
+      console.error('EmailJS Error Response:', errText);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('EmailJS Fetch Exception:', err.message);
+    return false;
+  }
 }
+
 
 let adm, fbErr = '';
 function fb() {
