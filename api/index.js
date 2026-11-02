@@ -28,7 +28,7 @@ async function mail(to, subject, text, passcode) {
   const pubKey = process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY || 'QO4heLZusODhrA3Qb';
   const serviceId = process.env.EMAILJS_SERVICE_ID || process.env.EMAIL_JS_SERVICE_ID || 'service_p2lea5f';
   const templateId = process.env.EMAILJS_TEMPLATE_ID || process.env.EMAIL_JS_TEMPLATE_ID || 'template_cb0psbc';
-  
+
   try {
     const payload = {
       service_id: serviceId,
@@ -47,15 +47,20 @@ async function mail(to, subject, text, passcode) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    
+
     if (!x.ok) {
       const errText = await x.text();
       console.error('EmailJS Failed Status:', x.status, 'Response:', errText);
+      // KEY FIX: throw error instead of swallowing it
+      throw new Error(`EmailJS failed: ${x.status} - ${errText}`);
     }
+
+    console.log('EmailJS OK: mail sent to', to);
     return true;
   } catch (err) {
     console.error('EmailJS Exception Thrown:', err.message);
-    return true;
+    // KEY FIX: rethrow so caller knows it failed
+    throw err;
   }
 }
 
