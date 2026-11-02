@@ -86,8 +86,10 @@
 
 <script>
   const $ = s => document.querySelector(s);
-  let currentEmail = '';
-  let currentKey = '';
+  
+  // LocalStorage se session load karein (Refresh par logout na ho)
+  let currentEmail = localStorage.getItem('ms_api_email') || '';
+  let currentKey = localStorage.getItem('ms_api_key') || '';
   let userKeys = [];
 
   const toast = (msg) => {
@@ -106,7 +108,27 @@
     }
   };
 
-  // Step 1: Send OTP via Email (Custom Route)
+  // Logout function
+  window.logout = () => {
+    localStorage.removeItem('ms_api_email');
+    localStorage.removeItem('ms_api_key');
+    currentEmail = '';
+    currentKey = '';
+    location.reload();
+  };
+
+  // Page load hote hi check karein agar pehle se logged in hain
+  window.onload = () => {
+    if (currentEmail && currentKey) {
+      $('#step-email').hidden = true;
+      $('#step-otp').hidden = true;
+      $('#step-dashboard').hidden = false;
+      $('#base-url').textContent = location.origin + '/api/ms-api/{token}/...';
+      loadKeys();
+    }
+  };
+
+  // Step 1: Send OTP via Email
   $('#btn-send-otp').onclick = async () => {
     const email = $('#email').value.trim();
     if (!email) return toast('Please enter email');
@@ -126,6 +148,8 @@
       if (data.err) throw new Error(data.err);
       
       currentEmail = email;
+      localStorage.setItem('ms_api_email', currentEmail); // Save email
+      
       $('#display-email').textContent = email;
       $('#step-email').hidden = true;
       $('#step-otp').hidden = false;
@@ -138,7 +162,7 @@
     }
   };
 
-  // Step 2: Verify OTP (FIXED ENDPOINT HERE)
+  // Step 2: Verify OTP
   $('#btn-verify-otp').onclick = async () => {
     const code = $('#otp').value.trim();
     if (!code) return toast('Please enter OTP');
@@ -148,7 +172,6 @@
     btn.disabled = true;
 
     try {
-      // Yahan endpoint /auth/api-key-verify kiya gaya hai
       const res = await fetch('/api/auth/api-key-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,7 +181,8 @@
       
       if (data.err) throw new Error(data.err);
       
-      // Show dashboard
+      // Show dashboard & save session
+      localStorage.setItem('ms_api_key', 'true'); // Save session
       $('#step-otp').hidden = true;
       $('#step-dashboard').hidden = false;
       $('#base-url').textContent = location.origin + '/api/ms-api/{token}/...';
@@ -182,13 +206,30 @@
       const res = await fetch(`/api/ap/token/${currentEmail}/list`);
       const data = await res.json();
       
-      if (data.err) throw new Error(data.err);
+      if (data.err) {
+        if (data.err === 'User not found') logout();
+        throw new Error(data.err);
+      }
       
       userKeys = data.keys || [];
       
       if (userKeys.length === 0) {
         list.innerHTML = '<p style="text-align:center;opacity:0.6;padding:20px;">No API keys generated yet.</p>';
         return;
+      }
+
+      // Add Logout button on top if not there
+      if (!$('#btn-logout')) {
+        const header = document.querySelector('#step-dashboard > div');
+        if (header) {
+          const lBtn = document.createElement('button');
+          lBtn.id = 'btn-logout';
+          lBtn.className = 'btn';
+          lBtn.style.cssText = 'width:auto;padding:6px 12px;margin:0;font-size:12px;background:#555;';
+          lBtn.textContent = 'Logout';
+          lBtn.onclick = logout;
+          header.appendChild(lBtn);
+        }
       }
 
       list.innerHTML = userKeys.map(k => `
@@ -205,6 +246,7 @@
         </div>
       `).join('');
 
+      // Select key for docs
       if (userKeys.length && !userKeys.includes(currentKey)) {
         currentKey = userKeys[0];
         renderCode('node');
