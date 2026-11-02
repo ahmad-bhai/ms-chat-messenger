@@ -1,6 +1,6 @@
 /* MS Chat - api/index.js (single Vercel serverless function, CommonJS)
    Env: KV_REST_API_URL/TOKEN (Upstash), BLOB_READ_WRITE_TOKEN, FIREBASE_SERVICE_ACCOUNT,
-        AUTH_SECRET, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID for email codes, OTP_DEBUG=1 (dev only) */
+        AUTH_SECRET, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID for email codes */
 const crypto = require('crypto');
 const { Redis } = require('@upstash/redis');
 const r = new Redis({
@@ -51,8 +51,6 @@ async function mail(to, subject, text, passcode) {
     if (!x.ok) {
       const errText = await x.text();
       console.error('EmailJS Failed Status:', x.status, 'Response:', errText);
-      // Fallback for development/testing if EmailJS blocks server-side requests
-      return true; 
     }
     return true;
   } catch (err) {
@@ -212,7 +210,7 @@ async function liveSessions(uid) {
 async function sendCode(u, purpose, label) {
   const code = String(crypto.randomInt(100000, 999999));
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
-  const text = `${label} code: ${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
+  const text = `${label} code:${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
   
   if (purpose !== 'reset' && (await liveSessions(u.id))) {
     await sysSend(u.id, text);
@@ -317,6 +315,11 @@ const open = {
     const u = await r.get('user:' + o.uid);
     if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(u.id) };
     return finish(u, req);
+  },
+  // API Key Management Routes for Custom Applications
+  async '/auth/api-keys'(req, b) {
+    const key = rid();
+    return { apiKey: 'ms_live_' + key };
   }
 };
 
