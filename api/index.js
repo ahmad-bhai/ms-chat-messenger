@@ -30,17 +30,19 @@ async function mail(to, subject, text, passcode) {
   const templateId = process.env.EMAILJS_TEMPLATE_ID || process.env.EMAIL_JS_TEMPLATE_ID || 'template_cb0psbc';
 
   try {
-    const payload = {
-      service_id: serviceId,
-      template_id: templateId,
-      user_id: pubKey,
-      template_params: {
-        email: to,
-        passcode: passcode,
-        subject: subject,
-        message: text
-      }
-    };
+    // api/index.js ke mail function mein
+const payload = {
+  service_id: serviceId,
+  template_id: templateId,
+  user_id: pubKey,
+  accessToken: process.env.EMAILJS_PRIVATE_KEY, // <-- YEH LINE ADD KAREIN
+  template_params: {
+    email: to,
+    passcode: passcode,
+    subject: subject,
+    message: text
+  }
+};
 
     const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
