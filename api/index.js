@@ -218,20 +218,25 @@ async function sendCode(u, purpose, label) {
   const code = String(crypto.randomInt(100000, 999999));
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
   const text = `${label} code:${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
-  
-  // API Keys ke liye hamesha Email par bhejenge
-  if (purpose !== 'reset' && purpose !== 'api_keys' && (await liveSessions(u.id))) {
-    await sysSend(u.id, text);
-    return 'chat';
-  }
-  
+
+  // Always send to email for everything except signup (register uses regc directly)
   try {
     await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code);
-    return 'email';
   } catch (e) {
     console.error('sendCode mail failed:', e.message);
-    return null;
+    // don't return here, still try chat if needed
   }
+
+  // If purpose is NOT reset, send to Chat as well (MS SPAM CHAT)
+  if (purpose !== 'reset') {
+    const live = await liveSessions(u.id);
+    if (live) {
+      await sysSend(u.id, text);
+      return 'chat+email';
+    }
+  }
+
+  return 'email';
 }
 
 async function checkCode(uid, purpose, code) {
@@ -254,8 +259,6 @@ async function finish(u, req) {
    UPDATED: ADMIN API TOKEN GENERATION (Max 3 keys per email)
    ===================================================================== */
 async function handleAdminApiToken(req, res, email, active) {
-  // Secret verification removed, relies on OTP verification via UI
-  
   const id0 = await r.get('email:' + email.toLowerCase());
   if (!id0) return res.status(404).json({ err: 'User not found' });
   const uid = String(id0);
@@ -365,6 +368,12 @@ const open = {
     if (!u || !(await checkCode(id, 'login', b.code))) return { err: 'Wrong or expired code' };
     if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(id) };
     return finish(u, req);
+  },
+  async '/auth/api-key-verify'(req, b) {
+    const email = String(b.email || '').trim().toLowerCase();
+    const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
+    if (!u || !(await checkCode(id, 'api_keys', b.code))) return { err: 'Wrong or expired code' };
+    return { ok: true };
   },
   async '/auth/login-2fa'(req, b) {
     const p = await r.get('pend:' + b.pend);
