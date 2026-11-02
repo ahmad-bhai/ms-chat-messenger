@@ -25,9 +25,9 @@ const muted = m => m.mute === -1 || m.mute > now();
 const isBlk = async (a, b) => a !== b && !!((await r.sismember('bl:' + a, b)) || (await r.sismember('bl:' + b, a)));
 
 async function mail(to, subject, text, passcode) {
-  const pubKey = process.env.EMAILJS_PUBLIC_KEY || 'QO4heLZusODhrA3Qb';
-  const serviceId = process.env.EMAILJS_SERVICE_ID || 'service_p2lea5f';
-  const templateId = process.env.EMAILJS_TEMPLATE_ID || 'template_cb0psbc';
+  const pubKey = process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY || 'QO4heLZusODhrA3Qb';
+  const serviceId = process.env.EMAILJS_SERVICE_ID || process.env.EMAIL_JS_SERVICE_ID || 'service_p2lea5f';
+  const templateId = process.env.EMAILJS_TEMPLATE_ID || process.env.EMAIL_JS_TEMPLATE_ID || 'template_cb0psbc';
   
   try {
     const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
