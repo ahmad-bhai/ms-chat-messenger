@@ -58,7 +58,6 @@ async function mail(to, subject, text, passcode) {
   }
 }
 
-
 let adm, fbErr = '';
 function fb() {
   if (adm !== undefined) return adm;
@@ -206,14 +205,26 @@ async function liveSessions(uid) {
   for (const s of await r.smembers('us:' + uid)) { if (await r.get('sess:' + s)) n++; else await r.srem('us:' + uid, s); }
   return n;
 }
+
+// Updated sendCode logic:
+// - For login: If live sessions exist, send via chat; otherwise fallback to email using EmailJS.
+// - For reset (password recovery): Always send via EmailJS directly.
 async function sendCode(u, purpose, label) {
   const code = String(crypto.randomInt(100000, 999999));
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
   const text = `${label} code: ${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
-  if (purpose !== 'reset' && (await liveSessions(u.id))) { await sysSend(u.id, text); return 'chat'; }
-  if (await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code)) return 'email';
+  
+  if (purpose !== 'reset' && (await liveSessions(u.id))) {
+    await sysSend(u.id, text);
+    return 'chat';
+  }
+  
+  if (await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code)) {
+    return 'email';
+  }
   return null;
 }
+
 async function checkCode(uid, purpose, code) {
   const k = `code:${purpose}:${uid}`, o = await r.get(k);
   if (!o || o.exp < now()) return false;
@@ -243,7 +254,7 @@ const open = {
     if (!/^[a-zA-Z]\w{2,31}$/.test(username)) return { err: 'Username: 3-32 chars, letters/numbers/_' };
     if (await r.get('uname:' + username.toLowerCase())) return { err: 'Username taken' };
     
-    // EmailJS configuration check
+    // Register verification code always sent via EmailJS email
     if (!b.code) {
       if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
       const code = String(crypto.randomInt(100000, 999999));
@@ -263,7 +274,7 @@ const open = {
     const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
     if (!u) return { err: 'No account with this email. Create one first.' };
     const via = await sendCode(u, 'login', 'Login');
-    return via ? { ok: true, via } : { err: 'No logged-in device and email service is not set up, so the code cannot be delivered.' };
+    return via ? { ok: true, via } : { err: 'Could not send login verification code.' };
   },
   async '/auth/login-verify'(req, b) {
     const email = String(b.email || '').trim().toLowerCase();
