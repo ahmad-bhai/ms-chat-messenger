@@ -701,8 +701,8 @@ module.exports = async (req, res) => {
     if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT, emailjs: !!(process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY) });
     if (p === '/upload') return upload(req, res, b);
     
-    // Check for Admin Token generation route
-    const adminMatch = p.match(/^\/ap\/token\/([^/]+)\/(true|false)$/);
+    // module.exports ke andar purani line ko is se replace karein:
+const adminMatch = p.match(/^\/ap\/token\/([^/]+)\/(true|false|list|delete)$/);
     if (adminMatch) return handleAdminApiToken(req, res, adminMatch[1], adminMatch[2]);
 
     // Check for Developer API Route (/ms-api/{token}/...)
