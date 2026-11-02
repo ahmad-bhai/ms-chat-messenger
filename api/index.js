@@ -103,7 +103,7 @@ async function notify(peer, from, m, chat) {
     const a = fb();
     if (!toks.length || !a) return;
     const cn = await r.hget('ct:' + peer, from.id);
-    const body = m.media ? '[' + m.media.type + '] ' + (m.text || '') : m.text;
+    const body = uni(m.media ? '[' + m.media.type + '] ' + (m.text || '') : m.text);
     const out = await a.messaging().sendEachForMulticast({
       tokens: toks,
       data: { title: cn || from.name, body: String(body).slice(0, 140), chatId: chat, msgId: String(m.id), ts: String(m.ts), silent: meta.mute === -2 ? '1' : '' },
@@ -113,6 +113,14 @@ async function notify(peer, from, m, chat) {
   } catch (e) { console.error('push failed', e.message); }
 }
 
+const cleanMedia = x => (x && typeof x.url === 'string' && /^https:\/\//.test(x.url)) ? { url: x.url.slice(0, 1500), name: String(x.name || '').slice(0, 120), size: +x.size || 0, type: ['image', 'video', 'audio', 'voice', 'file'].includes(x.type) ? x.type : 'file', dur: +x.dur || 0, wave: Array.isArray(x.wave) ? x.wave.slice(0, 64).map(n => (+n || 0) & 31) : undefined } : null;
+const uni = t => {
+  const m = (s, a, A, d) => [...s].map(c => { const x = c.charCodeAt(0); return x >= 65 && x <= 90 ? String.fromCodePoint(A + x - 65) : x >= 97 && x <= 122 ? String.fromCodePoint(a + x - 97) : d && x >= 48 && x <= 57 ? String.fromCodePoint(d + x - 48) : c; }).join('');
+  return String(t || '').replace(/\|\|([\s\S]+?)\|\|/g, (_, x) => '\u2591'.repeat([...x].length))
+    .replace(/\*\*([\s\S]+?)\*\*/g, (_, x) => m(x, 0x1D5EE, 0x1D5D4, 0x1D7EC)).replace(/__([\s\S]+?)__/g, (_, x) => m(x, 0x1D622, 0x1D608))
+    .replace(/`([^`\n]+)`/g, (_, x) => m(x, 0x1D68A, 0x1D670, 0x1D7F6)).replace(/~~([\s\S]+?)~~/g, (_, x) => [...x].map(c => c + '\u0336').join(''))
+    .replace(/\+\+([\s\S]+?)\+\+/g, (_, x) => [...x].map(c => c + '\u0332').join('')).replace(/(^|\n)> ?/g, '$1\u275D ');
+};
 async function send(uid, b) {
   const chat = b.chat;
   if (!can(uid, chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
@@ -120,14 +128,15 @@ async function send(uid, b) {
   if (peer === SYS) return { err: 'Service chat is read-only' };
   if (peer !== uid && (await isBlk(uid, peer))) return { err: 'You cannot message this user' };
   const text = String(b.text || '').slice(0, 4000);
-  if (!text && !b.media) return { err: 'empty' };
-  if (chat[0] === 's' && b.media) {
+  const media = cleanMedia(b.media);
+  if (!text && !media) return { err: 'empty' };
+  if (chat[0] === 's' && media) {
     const used = (await r.get('sv:' + uid)) || 0;
-    if (used + (b.media.size || 0) > 70 * 1048576) return { err: 'Saved Messages full (70 MB limit)' };
-    await r.incrby('sv:' + uid, b.media.size || 0);
+    if (used + (media.size || 0) > 70 * 1048576) return { err: 'Saved Messages full (70 MB limit)' };
+    await r.incrby('sv:' + uid, media.size || 0);
   }
   const id = await r.incr('mid');
-  const m = { id, chat, from: uid, text, ts: now(), media: b.media || null, reply: b.reply || null, fwd: b.fwd || null, react: {}, del: [], pin: [] };
+  const m = { id, chat, from: uid, text, ts: now(), media, reply: b.reply || null, fwd: b.fwd || null, react: {}, del: [], pin: [] };
   await bump(chat, m);
   await r.set('lm:' + chat, id);
   for (const u of new Set([uid, peer])) await r.zadd('ul:' + u, { score: m.ts, member: chat });
@@ -358,6 +367,8 @@ A['/edit'] = async (c, b) => {
   const m = await getMsg(c, b);
   if (!m || m.from !== c.uid || m.dead) return { err: 'cannot edit' };
   m.text = String(b.text || '').slice(0, 4000); m.edited = true;
+  const nmed = cleanMedia(b.media); if (nmed) m.media = nmed;
+  if (!m.text && !m.media) return { err: 'empty' };
   await bump(b.chat, m);
   return { ok: true, msg: m };
 };
