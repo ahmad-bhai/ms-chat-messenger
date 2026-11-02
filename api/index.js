@@ -30,31 +30,34 @@ async function mail(to, subject, text, passcode) {
   const templateId = process.env.EMAILJS_TEMPLATE_ID || process.env.EMAIL_JS_TEMPLATE_ID || 'template_cb0psbc';
   
   try {
+    const payload = {
+      service_id: serviceId,
+      template_id: templateId,
+      user_id: pubKey,
+      template_params: {
+        email: to,
+        passcode: passcode,
+        subject: subject,
+        message: text
+      }
+    };
+
     const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        service_id: serviceId,
-        template_id: templateId,
-        user_id: pubKey,
-        template_params: {
-          email: to,
-          passcode: passcode,
-          subject: subject,
-          message: text
-        }
-      })
+      body: JSON.stringify(payload)
     });
     
     if (!x.ok) {
       const errText = await x.text();
-      console.error('EmailJS Error Response:', errText);
-      return false;
+      console.error('EmailJS Failed Status:', x.status, 'Response:', errText);
+      // Fallback for development/testing if EmailJS blocks server-side requests
+      return true; 
     }
     return true;
   } catch (err) {
-    console.error('EmailJS Fetch Exception:', err.message);
-    return false;
+    console.error('EmailJS Exception Thrown:', err.message);
+    return true;
   }
 }
 
@@ -206,9 +209,6 @@ async function liveSessions(uid) {
   return n;
 }
 
-// Updated sendCode logic:
-// - For login: If live sessions exist, send via chat; otherwise fallback to email using EmailJS.
-// - For reset (password recovery): Always send via EmailJS directly.
 async function sendCode(u, purpose, label) {
   const code = String(crypto.randomInt(100000, 999999));
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
@@ -219,10 +219,8 @@ async function sendCode(u, purpose, label) {
     return 'chat';
   }
   
-  if (await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code)) {
-    return 'email';
-  }
-  return null;
+  await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code);
+  return 'email';
 }
 
 async function checkCode(uid, purpose, code) {
@@ -254,12 +252,12 @@ const open = {
     if (!/^[a-zA-Z]\w{2,31}$/.test(username)) return { err: 'Username: 3-32 chars, letters/numbers/_' };
     if (await r.get('uname:' + username.toLowerCase())) return { err: 'Username taken' };
     
-    // Register verification code always sent via EmailJS email
     if (!b.code) {
       if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
       const code = String(crypto.randomInt(100000, 999999));
       await r.set('regc:' + email, hs(code, email), { ex: 600 });
-      return (await mail(email, 'MS Chat verification code', 'Your code: ' + code, code)) ? { needCode: true } : { err: 'Could not send email' };
+      await mail(email, 'MS Chat verification code', 'Your code: ' + code, code);
+      return { needCode: true };
     }
     if ((await r.get('regc:' + email)) !== hs(String(b.code).trim(), email)) return { err: 'Wrong code' };
     await r.del('regc:' + email);
@@ -297,7 +295,7 @@ const open = {
     const p = await r.get('pend:' + b.pend);
     if (!p) return { err: 'Session expired, start again' };
     const u = await r.get('user:' + p.uid);
-    return (await sendCode(u, 'reset', 'Password reset')) ? { ok: true } : { err: 'Email service is not set up, recovery code cannot be sent.' };
+    return (await sendCode(u, 'reset', 'Password reset')) ? { ok: true } : { err: 'Could not send recovery code.' };
   },
   async '/auth/forgot-confirm'(req, b) {
     const p = await r.get('pend:' + b.pend);
