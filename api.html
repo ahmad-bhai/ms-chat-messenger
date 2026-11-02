@@ -6,7 +6,6 @@
   <title>MS Chat - Developer API</title>
   <link rel="stylesheet" href="https://ms-chat-messenger.vercel.app/style.css">
   <style>
-    /* Page specific tweaks */
     .dev-card { padding: 16px; margin-bottom: 12px; }
     .key-val { font-family: ui-monospace, Menlo, monospace; background: var(--bd); padding: 6px 10px; border-radius: 10px; font-size: 13px; word-break: break-all; display: block; margin: 8px 0; }
     .code-box { background: #0f0b15; border: 1px solid var(--bd); border-radius: 12px; padding: 12px; overflow-x: auto; font-family: ui-monospace, Menlo, monospace; font-size: 13px; margin-top: 10px; color: #e2e8f0; }
@@ -19,22 +18,11 @@
     .copy-btn .i { width: 16px; height: 16px; fill: currentColor; }
     .del-btn { background: rgba(255, 59, 48, 0.15); color: #ff5b5b; border: 1px solid rgba(255, 59, 48, 0.3); padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px;}
     .del-btn:active { transform: scale(0.95); }
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; animation: fadeIn 0.2s; }
-    .modal-box { background: var(--bg); border: 1px solid var(--bd); border-radius: 24px; padding: 24px; width: 100%; max-width: 340px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); animation: slideUp 0.3s; }
-    .modal-box h3 { margin-bottom: 8px; font-size: 18px; }
-    .modal-box p { font-size: 13px; opacity: 0.8; margin-bottom: 16px; }
-    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
-    .modal-actions button { padding: 10px 16px; border-radius: 99px; border: none; font-weight: 600; cursor: pointer; font-size: 14px; }
-    .modal-actions .cancel { background: var(--bb); color: var(--tx); }
-    .modal-actions .confirm { background: var(--ac); color: #fff; }
-    @keyframes fadeIn { from { opacity: 0; } }
-    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } }
   </style>
 </head>
 <body>
 
 <div class="scr" id="app">
-  <!-- Header -->
   <div class="hd badge">
     <a href="/" class="ib" style="text-decoration:none;color:inherit">
       <svg class="i" viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
@@ -42,23 +30,22 @@
     <b class="ttl fx">Developer API</b>
   </div>
 
-  <!-- Main Content -->
   <div style="padding: 16px; overflow-y: auto; flex: 1;" id="content">
     
     <!-- Step 1: Email Verification -->
     <div id="step-email" class="badge dev-card">
       <h3 style="margin-bottom: 8px;">Verify Email</h3>
-      <p style="font-size: 13px; opacity: 0.8; margin-bottom: 12px;">Enter your MS Chat account email to receive an OTP.</p>
+      <p style="font-size: 13px; opacity: 0.8; margin-bottom: 12px;">Enter your MS Chat account email to receive an OTP directly in your inbox.</p>
       <input type="email" id="email" class="inp" placeholder="you@example.com">
-      <button class="btn" id="btn-send-otp">Send OTP</button>
+      <button class="btn" id="btn-send-otp">Send OTP via Email</button>
     </div>
 
     <!-- Step 2: OTP Input -->
     <div id="step-otp" class="badge dev-card" hidden>
       <h3 style="margin-bottom: 8px;">Enter OTP</h3>
-      <p style="font-size: 13px; opacity: 0.8; margin-bottom: 12px;">Enter the 6-digit verification code sent to your email.</p>
+      <p style="font-size: 13px; opacity: 0.8; margin-bottom: 12px;">Enter the 6-digit verification code sent to <b id="display-email"></b>.</p>
       <input type="tel" id="otp" class="inp" placeholder="123456" maxlength="6" style="text-align: center; letter-spacing: 4px; font-size: 20px;">
-      <button class="btn" id="btn-verify-otp">Verify</button>
+      <button class="btn" id="btn-verify-otp">Verify & Continue</button>
     </div>
 
     <!-- Step 3: API Dashboard -->
@@ -100,11 +87,9 @@
 <script>
   const $ = s => document.querySelector(s);
   let currentEmail = '';
-  let currentSecret = '';
   let currentKey = '';
   let userKeys = [];
 
-  // Toast Notification
   const toast = (msg) => {
     const t = $('#ts');
     t.innerHTML = `<div class="tt">${msg}</div>`;
@@ -112,7 +97,6 @@
     window._tt = setTimeout(() => t.innerHTML = '', 2500);
   };
 
-  // Copy to Clipboard (No Alert)
   const copyToClipboard = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -122,53 +106,17 @@
     }
   };
 
-  // Custom Modal for Auth Secret
-  function askSecret(title, desc, callback) {
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-      <div class="modal-box">
-        <h3>${title}</h3>
-        <p>${desc}</p>
-        <input type="password" id="m-secret" class="inp" placeholder="Enter Auth Secret">
-        <div class="modal-actions">
-          <button class="cancel" id="m-cancel">Cancel</button>
-          <button class="confirm" id="m-confirm">Confirm</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    const input = modal.querySelector('#m-secret');
-    input.focus();
-
-    const close = () => modal.remove();
-
-    modal.querySelector('#m-cancel').onclick = close;
-    modal.querySelector('#m-confirm').onclick = () => {
-      const val = input.value.trim();
-      if (!val) return toast('Secret is required');
-      currentSecret = val;
-      close();
-      callback();
-    };
-    
-    // Enter key to submit
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter') modal.querySelector('#m-confirm').click();
-    };
-  }
-
-  // --- Step 1: Send OTP ---
+  // Step 1: Send OTP via Email (Custom Route)
   $('#btn-send-otp').onclick = async () => {
     const email = $('#email').value.trim();
     if (!email) return toast('Please enter email');
     
     const btn = $('#btn-send-otp');
-    btn.textContent = 'Sending...';
+    btn.textContent = 'Sending OTP...';
     btn.disabled = true;
 
     try {
-      const res = await fetch('/api/auth/login-start', {
+      const res = await fetch('/api/auth/api-key-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -178,18 +126,19 @@
       if (data.err) throw new Error(data.err);
       
       currentEmail = email;
+      $('#display-email').textContent = email;
       $('#step-email').hidden = true;
       $('#step-otp').hidden = false;
-      toast('OTP sent to email!');
+      toast('OTP sent to your email!');
     } catch (e) {
       toast(e.message);
     } finally {
-      btn.textContent = 'Send OTP';
+      btn.textContent = 'Send OTP via Email';
       btn.disabled = false;
     }
   };
 
-  // --- Step 2: Verify OTP ---
+  // Step 2: Verify OTP
   $('#btn-verify-otp').onclick = async () => {
     const code = $('#otp').value.trim();
     if (!code) return toast('Please enter OTP');
@@ -208,30 +157,28 @@
       
       if (data.err) throw new Error(data.err);
       
-      // Show dashboard and ask for Secret
+      // Show dashboard
       $('#step-otp').hidden = true;
       $('#step-dashboard').hidden = false;
       $('#base-url').textContent = location.origin + '/api/ms-api/{token}/...';
       
-      askSecret('Access Developer Dashboard', 'Enter your AUTH_SECRET to manage API keys.', loadKeys);
+      loadKeys();
       
     } catch (e) {
       toast(e.message);
     } finally {
-      btn.textContent = 'Verify';
+      btn.textContent = 'Verify & Continue';
       btn.disabled = false;
     }
   };
 
-  // --- Load & Render Keys ---
+  // Load & Render Keys
   async function loadKeys() {
     const list = $('#keys-list');
     list.innerHTML = '<p style="text-align:center;opacity:0.6;padding:20px;">Loading keys...</p>';
 
     try {
-      const res = await fetch(`/api/ap/token/${currentEmail}/list`, {
-        headers: { 'x-auth-secret': currentSecret }
-      });
+      const res = await fetch(`/api/ap/token/${currentEmail}/list`);
       const data = await res.json();
       
       if (data.err) throw new Error(data.err);
@@ -257,29 +204,21 @@
         </div>
       `).join('');
 
-      // Select first key for docs if none selected
       if (userKeys.length && !userKeys.includes(currentKey)) {
         currentKey = userKeys[0];
         renderCode('node');
       }
     } catch (e) {
       list.innerHTML = `<p style="color:#ff5b5b; text-align:center; padding:20px;">${e.message}</p>`;
-      if (e.message.includes('Forbidden')) {
-        currentSecret = '';
-        askSecret('Invalid Secret', 'Please enter correct AUTH_SECRET.', loadKeys);
-      }
     }
   }
 
-  // --- Generate New Key ---
+  // Generate New Key
   $('#btn-gen').onclick = async () => {
     if (userKeys.length >= 3) return toast('Max limit reached. Delete a key first.');
     
     try {
-      const res = await fetch(`/api/ap/token/${currentEmail}/true`, {
-        method: 'GET',
-        headers: { 'x-auth-secret': currentSecret }
-      });
+      const res = await fetch(`/api/ap/token/${currentEmail}/true`);
       const data = await res.json();
       if (data.err) throw new Error(data.err);
       
@@ -290,14 +229,11 @@
     }
   };
 
-  // --- Delete Key ---
+  // Delete Key
   window.deleteKey = async (key) => {
     if (!confirm('Are you sure you want to delete this API key? Any app using it will stop working.')) return;
     try {
-      const res = await fetch(`/api/ap/token/${currentEmail}/delete?token=${key}`, {
-        method: 'GET',
-        headers: { 'x-auth-secret': currentSecret }
-      });
+      const res = await fetch(`/api/ap/token/${currentEmail}/delete?token=${key}`);
       const data = await res.json();
       if (data.err) throw new Error(data.err);
       
@@ -309,7 +245,6 @@
     }
   };
 
-  // --- Code Renderer ---
   const codes = {
     node: () => `const axios = require('axios');\n\nconst API_TOKEN = '${currentKey || 'YOUR_TOKEN'}';\nconst BASE_URL = '${location.origin}/api/ms-api/' + API_TOKEN;\n\nasync function getChats() {\n  const res = await axios.get(BASE_URL + '/chats');\n  console.log(res.data);\n}\n\ngetChats();`,
     js: () => `const API_TOKEN = '${currentKey || 'YOUR_TOKEN'}';\nconst BASE_URL = '${location.origin}/api/ms-api/' + API_TOKEN;\n\nasync function getChats() {\n  const res = await fetch(BASE_URL + '/chats');\n  const data = await res.json();\n  console.log(data);\n}\n\ngetChats();`,
@@ -327,7 +262,6 @@
     return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
   }
 
-  // Tabs logic
   document.querySelectorAll('#code-tabs button').forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll('#code-tabs button').forEach(b => b.classList.remove('on'));
@@ -335,7 +269,6 @@
       renderCode(btn.dataset.lang);
     };
   });
-
 </script>
 </body>
 </html>
