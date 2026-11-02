@@ -51,7 +51,6 @@ async function mail(to, subject, text, passcode) {
     if (!x.ok) {
       const errText = await x.text();
       console.error('EmailJS Failed Status:', x.status, 'Response:', errText);
-      // KEY FIX: throw error instead of swallowing it
       throw new Error(`EmailJS failed: ${x.status} - ${errText}`);
     }
 
@@ -59,7 +58,6 @@ async function mail(to, subject, text, passcode) {
     return true;
   } catch (err) {
     console.error('EmailJS Exception Thrown:', err.message);
-    // KEY FIX: rethrow so caller knows it failed
     throw err;
   }
 }
@@ -216,14 +214,19 @@ async function sendCode(u, purpose, label) {
   const code = String(crypto.randomInt(100000, 999999));
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
   const text = `${label} code:${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
-  
+
   if (purpose !== 'reset' && (await liveSessions(u.id))) {
     await sysSend(u.id, text);
     return 'chat';
   }
-  
-  await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code);
-  return 'email';
+
+  try {
+    await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code);
+    return 'email';
+  } catch (e) {
+    console.error('sendCode mail failed:', e.message);
+    return null;
+  }
 }
 
 async function checkCode(uid, purpose, code) {
@@ -254,12 +257,17 @@ const open = {
     const username = String(b.username || '').replace(/^@/, '').trim() || 'user' + id.slice(-7);
     if (!/^[a-zA-Z]\w{2,31}$/.test(username)) return { err: 'Username: 3-32 chars, letters/numbers/_' };
     if (await r.get('uname:' + username.toLowerCase())) return { err: 'Username taken' };
-    
+
     if (!b.code) {
       if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
       const code = String(crypto.randomInt(100000, 999999));
       await r.set('regc:' + email, hs(code, email), { ex: 600 });
-      await mail(email, 'MS Chat verification code', 'Your code: ' + code, code);
+      try {
+        await mail(email, 'MS Chat verification code', 'Your code: ' + code, code);
+      } catch (e) {
+        console.error('register mail failed:', e.message);
+        return { err: 'Could not send email' };
+      }
       return { needCode: true };
     }
     if ((await r.get('regc:' + email)) !== hs(String(b.code).trim(), email)) return { err: 'Wrong code' };
@@ -321,7 +329,6 @@ const open = {
     if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(u.id) };
     return finish(u, req);
   },
-  // API Key Management Routes for Custom Applications
   async '/auth/api-keys'(req, b) {
     const key = rid();
     return { apiKey: 'ms_live_' + key };
@@ -617,7 +624,7 @@ module.exports = async (req, res) => {
   const q = req.query || {};
   const b = (req.body && typeof req.body === 'object' && req.body) || {};
   try {
-    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT });
+    if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT, emailjs: !!(process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY) });
     if (p === '/upload') return upload(req, res, b);
     if (open[p]) return res.json(await open[p](req, b));
     const c = await auth(req);
