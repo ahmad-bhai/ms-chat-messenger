@@ -1,6 +1,6 @@
 /* MS Chat - api/index.js (single Vercel serverless function, CommonJS)
    Env: KV_REST_API_URL/TOKEN (Upstash), BLOB_READ_WRITE_TOKEN, FIREBASE_SERVICE_ACCOUNT,
-        AUTH_SECRET, RESEND_API_KEY (+MAIL_FROM) for email codes, OTP_DEBUG=1 (dev only) */
+        AUTH_SECRET, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID for email codes, OTP_DEBUG=1 (dev only) */
 const crypto = require('crypto');
 const { Redis } = require('@upstash/redis');
 const r = new Redis({
@@ -24,12 +24,25 @@ const vis = (m, u, clr) => m && !m.dead && !(m.del || []).includes(u) && m.ts > 
 const muted = m => m.mute === -1 || m.mute > now();
 const isBlk = async (a, b) => a !== b && !!((await r.sismember('bl:' + a, b)) || (await r.sismember('bl:' + b, a)));
 
-async function mail(to, subject, text) {
-  if (!process.env.RESEND_API_KEY) return false;
-  const x = await fetch('https://api.resend.com/emails', {
+async function mail(to, subject, text, passcode) {
+  const pubKey = process.env.EMAILJS_PUBLIC_KEY || 'QO4heLZusODhrA3Qb';
+  const serviceId = process.env.EMAILJS_SERVICE_ID || 'service_p2lea5f';
+  const templateId = process.env.EMAILJS_TEMPLATE_ID || 'template_cb0psbc';
+  
+  const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: process.env.MAIL_FROM || 'MS Chat <onboarding@resend.dev>', to, subject, text })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      service_id: serviceId,
+      template_id: templateId,
+      user_id: pubKey,
+      template_params: {
+        email: to,
+        passcode: passcode,
+        subject: subject,
+        message: text
+      }
+    })
   });
   return x.ok;
 }
@@ -158,7 +171,6 @@ async function markRead(uid, chat) {
 const allMsgs = async chat => (await r.hgetall('mh:' + chat)) || {};
 const getMsg = async (c, b) => (can(c.uid, b.chat) ? r.hget('mh:' + b.chat, b.id) : null);
 
-
 const rl = async (k, n) => { const c = await r.incr('rl:' + k); if (c === 1) await r.expire('rl:' + k, 60); return c <= n; };
 async function sys() {
   let u = await r.get('user:' + SYS);
@@ -187,7 +199,7 @@ async function sendCode(u, purpose, label) {
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
   const text = `${label} code: ${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
   if (purpose !== 'reset' && (await liveSessions(u.id))) { await sysSend(u.id, text); return 'chat'; }
-  if (await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text)) return 'email';
+  if (await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code)) return 'email';
   return null;
 }
 async function checkCode(uid, purpose, code) {
@@ -218,16 +230,17 @@ const open = {
     const username = String(b.username || '').replace(/^@/, '').trim() || 'user' + id.slice(-7);
     if (!/^[a-zA-Z]\w{2,31}$/.test(username)) return { err: 'Username: 3-32 chars, letters/numbers/_' };
     if (await r.get('uname:' + username.toLowerCase())) return { err: 'Username taken' };
-    if (process.env.RESEND_API_KEY) { // verify email ownership when email service is configured
-      if (!b.code) {
-        if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
-        const code = String(crypto.randomInt(100000, 999999));
-        await r.set('regc:' + email, hs(code, email), { ex: 600 });
-        return (await mail(email, 'MS Chat verification code', 'Your code: ' + code)) ? { needCode: true } : { err: 'Could not send email' };
-      }
-      if ((await r.get('regc:' + email)) !== hs(String(b.code).trim(), email)) return { err: 'Wrong code' };
-      await r.del('regc:' + email);
+    
+    // EmailJS configuration check
+    if (!b.code) {
+      if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
+      const code = String(crypto.randomInt(100000, 999999));
+      await r.set('regc:' + email, hs(code, email), { ex: 600 });
+      return (await mail(email, 'MS Chat verification code', 'Your code: ' + code, code)) ? { needCode: true } : { err: 'Could not send email' };
     }
+    if ((await r.get('regc:' + email)) !== hs(String(b.code).trim(), email)) return { err: 'Wrong code' };
+    await r.del('regc:' + email);
+
     const u = { id, email, name, username, bio: '', dob: '', avatar: '', sec: {}, created: now() };
     await r.set('user:' + id, u); await r.set('email:' + email, id); await r.set('uname:' + username.toLowerCase(), id);
     return { token: await newSession(id, req), me: own(u) };
@@ -261,7 +274,7 @@ const open = {
     const p = await r.get('pend:' + b.pend);
     if (!p) return { err: 'Session expired, start again' };
     const u = await r.get('user:' + p.uid);
-    return (await sendCode(u, 'reset', 'Password reset')) ? { ok: true } : { err: 'Email service is not set up (RESEND_API_KEY), recovery code cannot be sent.' };
+    return (await sendCode(u, 'reset', 'Password reset')) ? { ok: true } : { err: 'Email service is not set up, recovery code cannot be sent.' };
   },
   async '/auth/forgot-confirm'(req, b) {
     const p = await r.get('pend:' + b.pend);
@@ -424,7 +437,7 @@ A['/search'] = async (c, b, q) => {
   };
   if (q.chat) return can(c.uid, q.chat) ? { msgs: (await scan(q.chat)).slice(0, 50) } : { err: 'forbidden' };
   const users = [];
-  const uid2 = await r.get('uname:' + s.replace(/^@/, ''));  // may come back as number
+  const uid2 = await r.get('uname:' + s.replace(/^@/, ''));
   if (uid2 != null) users.push(await pub(await r.get('user:' + String(uid2)), c.uid));
   const ids = (await r.zrange('ul:' + c.uid, 0, -1, { rev: true })).map(String).slice(0, 40);
   const chats = [];
@@ -552,7 +565,6 @@ A['/put'] = async (c, b, q) => {
   } catch (e) { console.error('put', e.message); return { err: e.message }; }
 };
 
-/* Uploads go browser -> Vercel Blob directly (up to 70 MB) */
 const blobToken = () => process.env.BLOB_READ_WRITE_TOKEN || (Object.entries(process.env).find(([k, v]) => /READ_WRITE_TOKEN$/.test(k) || String(v).startsWith('vercel_blob_rw_')) || [])[1];
 const blobEnvNames = () => Object.keys(process.env).filter(k => /BLOB|READ_WRITE/i.test(k));
 async function upload(req, res, body) {
