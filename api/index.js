@@ -3,10 +3,12 @@
         AUTH_SECRET, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID for email codes */
 const crypto = require('crypto');
 const { Redis } = require('@upstash/redis');
+
 const r = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN
 });
+
 const SECRET = process.env.AUTH_SECRET || 'ms-chat-secret';
 const now = () => Date.now();
 const SYS = '1000000';
@@ -30,19 +32,18 @@ async function mail(to, subject, text, passcode) {
   const templateId = process.env.EMAILJS_TEMPLATE_ID || process.env.EMAIL_JS_TEMPLATE_ID || 'template_cb0psbc';
 
   try {
-    // api/index.js ke mail function mein
-const payload = {
-  service_id: serviceId,
-  template_id: templateId,
-  user_id: pubKey,
-  accessToken: process.env.EMAILJS_PRIVATE_KEY, // <-- YEH LINE ADD KAREIN
-  template_params: {
-    email: to,
-    passcode: passcode,
-    subject: subject,
-    message: text
-  }
-};
+    const payload = {
+      service_id: serviceId,
+      template_id: templateId,
+      user_id: pubKey,
+      accessToken: process.env.EMAILJS_PRIVATE_KEY,
+      template_params: {
+        email: to,
+        passcode: passcode,
+        subject: subject,
+        message: text
+      }
+    };
 
     const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
@@ -151,6 +152,7 @@ const uni = t => {
     .replace(/`([^`\n]+)`/g, (_, x) => m(x, 0x1D68A, 0x1D670, 0x1D7F6)).replace(/~~([\s\S]+?)~~/g, (_, x) => [...x].map(c => c + '\u0336').join(''))
     .replace(/\+\+([\s\S]+?)\+\+/g, (_, x) => [...x].map(c => c + '\u0332').join('')).replace(/(^|\n)> ?/g, '$1\u275D ');
 };
+
 async function send(uid, b) {
   const chat = b.chat;
   if (!can(uid, chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
@@ -216,12 +218,12 @@ async function sendCode(u, purpose, label) {
   const code = String(crypto.randomInt(100000, 999999));
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
   const text = `${label} code:${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
-
+  
   if (purpose !== 'reset' && (await liveSessions(u.id))) {
     await sysSend(u.id, text);
     return 'chat';
   }
-
+  
   try {
     await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code);
     return 'email';
@@ -247,6 +249,45 @@ async function finish(u, req) {
   return { token, me: own(u) };
 }
 
+/* =====================================================================
+   NEW: ADMIN API TOKEN GENERATION ROUTE
+   ===================================================================== */
+async function handleAdminApiToken(req, res, email, active) {
+  // Security check: Only allow if request has correct AUTH_SECRET to prevent abuse
+  const secretHeader = req.headers['x-auth-secret'];
+  if (secretHeader !== SECRET) return res.status(403).json({ err: 'Forbidden: Invalid X-Auth-Secret' });
+
+  const id0 = await r.get('email:' + email.toLowerCase());
+  if (!id0) return res.status(404).json({ err: 'User not found' });
+  const uid = String(id0);
+
+  if (active === 'true') {
+    const token = 'ms_dev_' + rid();
+    await r.set('apitoken:' + token, uid);
+    return res.json({ ok: true, token, message: 'API Token generated. Use this in the Authorization header for /api/ms-api/{token}/*' });
+  } else {
+    // Revoke all tokens for this user
+    const keys = await r.keys('apitoken:*');
+    let revoked = 0;
+    for (const k of keys) {
+      if (await r.get(k) === uid) { await r.del(k); revoked++; }
+    }
+    return res.json({ ok: true, message: `Revoked ${revoked} API tokens for this user.` });
+  }
+}
+
+/* =====================================================================
+   NEW: DEVELOPER API AUTHENTICATION (Parses /api/ms-api/{token})
+   ===================================================================== */
+async function authDevApi(req, token) {
+  const uid = await r.get('apitoken:' + token);
+  if (!uid) return null;
+  const u = await r.get('user:' + uid);
+  if (!u) return null;
+  await r.set('seen:' + uid, now());
+  return { sid: 'dev_api', uid: String(uid) };
+}
+
 const A = {};
 const open = {
   async '/auth/register'(req, b) {
@@ -259,7 +300,7 @@ const open = {
     const username = String(b.username || '').replace(/^@/, '').trim() || 'user' + id.slice(-7);
     if (!/^[a-zA-Z]\w{2,31}$/.test(username)) return { err: 'Username: 3-32 chars, letters/numbers/_' };
     if (await r.get('uname:' + username.toLowerCase())) return { err: 'Username taken' };
-
+    
     if (!b.code) {
       if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
       const code = String(crypto.randomInt(100000, 999999));
@@ -622,12 +663,36 @@ async function upload(req, res, body) {
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  const p = req.url.split('?')[0].replace(/^\/api/, '').replace(/\/+$/, '') || '/';
+  const fullPath = req.url.split('?')[0].replace(/^\/api/, '');
+  const p = fullPath.replace(/\/+$/, '') || '/';
   const q = req.query || {};
   const b = (req.body && typeof req.body === 'object' && req.body) || {};
+  
   try {
     if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT, emailjs: !!(process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY) });
     if (p === '/upload') return upload(req, res, b);
+    
+    // Check for Admin Token generation route
+    const adminMatch = p.match(/^\/ap\/token\/([^/]+)\/(true|false)$/);
+    if (adminMatch) return handleAdminApiToken(req, res, adminMatch[1], adminMatch[2]);
+
+    // Check for Developer API Route (/ms-api/{token}/...)
+    const devMatch = p.match(/^\/ms-api\/([^/]+)(\/.*)?$/);
+    if (devMatch) {
+      const token = devMatch[1];
+      const devPath = devMatch[2] || '/';
+      const dc = await authDevApi(req, token);
+      if (!dc) return res.status(401).json({ err: 'Invalid or missing API Token' });
+      
+      // Block signup logic inside Dev API (as requested: no signup, only login & rest)
+      if (devPath.startsWith('/auth/register')) return res.status(403).json({ err: 'Registration is not allowed via Developer API.' });
+      
+      if (open[devPath]) return res.json(await open[devPath](req, b));
+      if (!A[devPath]) return res.status(404).json({ err: 'not found' });
+      return res.json(await A[devPath](dc, b, q, req));
+    }
+
+    // Normal MS Chat App Routes
     if (open[p]) return res.json(await open[p](req, b));
     const c = await auth(req);
     if (!c) return res.status(401).json({ err: 'unauthorized' });
