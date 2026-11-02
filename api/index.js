@@ -250,10 +250,9 @@ async function finish(u, req) {
 }
 
 /* =====================================================================
-   NEW: ADMIN API TOKEN GENERATION ROUTE
+   UPDATED: ADMIN API TOKEN GENERATION (Max 3 keys per email)
    ===================================================================== */
 async function handleAdminApiToken(req, res, email, active) {
-  // Security check: Only allow if request has correct AUTH_SECRET to prevent abuse
   const secretHeader = req.headers['x-auth-secret'];
   if (secretHeader !== SECRET) return res.status(403).json({ err: 'Forbidden: Invalid X-Auth-Secret' });
 
@@ -262,11 +261,41 @@ async function handleAdminApiToken(req, res, email, active) {
   const uid = String(id0);
 
   if (active === 'true') {
-    const token = 'ms_dev_' + rid();
+    // 1. Check existing keys for this user
+    const keys = await r.keys('apitoken:*');
+    let userKeys = [];
+    for (const k of keys) {
+      if (await r.get(k) === uid) userKeys.push(k.replace('apitoken:', ''));
+    }
+
+    // 2. Enforce max 3 limit
+    if (userKeys.length >= 3) {
+      return res.status(400).json({ err: 'Max limit reached. You can only have 3 active API keys. Delete one first.' });
+    }
+
+    // 3. Generate new key
+    const token = 'ms_dev_' + crypto.randomBytes(16).toString('hex');
     await r.set('apitoken:' + token, uid);
-    return res.json({ ok: true, token, message: 'API Token generated. Use this in the Authorization header for /api/ms-api/{token}/*' });
+    return res.json({ ok: true, token });
+  } else if (active === 'list') {
+    // List keys
+    const keys = await r.keys('apitoken:*');
+    let userKeys = [];
+    for (const k of keys) {
+      if (await r.get(k) === uid) userKeys.push(k.replace('apitoken:', ''));
+    }
+    return res.json({ ok: true, keys: userKeys });
+  } else if (active === 'delete') {
+    // Delete specific key (passed in query or body)
+    const token = req.query.token || (req.body && req.body.token);
+    if (!token) return res.status(400).json({ err: 'Token required' });
+    if (await r.get('apitoken:' + token) === uid) {
+      await r.del('apitoken:' + token);
+      return res.json({ ok: true, message: 'Key deleted' });
+    }
+    return res.status(404).json({ err: 'Key not found' });
   } else {
-    // Revoke all tokens for this user
+    // Revoke all
     const keys = await r.keys('apitoken:*');
     let revoked = 0;
     for (const k of keys) {
