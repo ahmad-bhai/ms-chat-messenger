@@ -238,50 +238,61 @@ async function handleAdminApiToken(req, res, email, active) {
   if (!id0) return res.status(404).json({ err: 'User not found' });
   const uid = String(id0);
 
-  const getUserKeys = async () => {
-    let cursor = 0, foundKeys = [];
-    do {
-      const [newCursor, keys] = await r.scan(cursor, { match: 'apitoken:*', count: 100 });
-      cursor = newCursor;
-      for (const k of keys) { if (await r.get(k) === uid) foundKeys.push(k.replace('apitoken:', '')); }
-    } while (cursor !== 0 && cursor !== "0");
-    return foundKeys;
-  };
-
   if (active === 'true') {
-    const userKeys = await getUserKeys();
-    if (userKeys.length >= 3) return res.status(400).json({ err: 'Max limit reached. You can only have 3 active API keys. Delete one first.' });
+    // Get current keys for limit check
+    let userKeys = await r.smembers('devkeys:' + uid);
     
+    // Fallback to scan if smembers is empty (for old keys)
+    if (!userKeys || userKeys.length === 0) {
+      const allKeys = await r.keys('apitoken:*');
+      userKeys = [];
+      for (const k of allKeys) {
+        if (await r.get(k) === uid) userKeys.push(k.replace('apitoken:', ''));
+      }
+    }
+
+    if (userKeys.length >= 3) {
+      return res.status(400).json({ err: 'Max limit reached. You can only have 3 active API keys. Delete one first.' });
+    }
+
     const token = 'ms_dev_' + crypto.randomBytes(16).toString('hex');
+    
+    // 1. Save token -> uid
     await r.set('apitoken:' + token, uid);
-    await r.sadd('usertokens:' + uid, token);
+    
+    // 2. Save token in user's devkeys set (for fast listing)
+    await r.sadd('devkeys:' + uid, token);
+    
     return res.json({ ok: true, token });
     
   } else if (active === 'list') {
-    let validTokens = await r.smembers('usertokens:' + uid);
-    // Fallback scan if set is empty
-    if (!validTokens || validTokens.length === 0) {
-       validTokens = await getUserKeys();
-       for(const t of validTokens) await r.sadd('usertokens:' + uid, t); // Fix set
-    } else {
-       // Verify these tokens actually exist in DB (not deleted)
-       let check = [];
-       for (const t of validTokens) {
-           if (await r.get('apitoken:' + t) === uid) check.push(t);
-           else await r.srem('usertokens:' + uid, t);
-       }
-       validTokens = check;
+    // Get keys directly from the Set
+    let userKeys = await r.smembers('devkeys:' + uid);
+    
+    // Fallback check if set is empty but old keys exist
+    if (!userKeys || userKeys.length === 0) {
+      const allKeys = await r.keys('apitoken:*');
+      userKeys = [];
+      for (const k of allKeys) {
+        if (await r.get(k) === uid) {
+           const tk = k.replace('apitoken:', '');
+           userKeys.push(tk);
+           await r.sadd('devkeys:' + uid, tk); // Repair: Add old keys to set
+        }
+      }
     }
-    return res.json({ ok: true, keys: validTokens });
+
+    return res.json({ ok: true, keys: userKeys });
     
   } else if (active === 'delete') {
     const token = req.query.token || (req.body && req.body.token);
     if (!token) return res.status(400).json({ err: 'Token required' });
+    
     if (await r.get('apitoken:' + token) === uid) {
       await r.del('apitoken:' + token);
-      await r.srem('usertokens:' + uid, token);
+      await r.srem('devkeys:' + uid, token); // Remove from set
       
-      // Auto logout: Clear all sessions associated with this API key
+      // Auto logout sessions linked to this API key
       const sessList = await r.smembers('us:' + uid);
       for (const sid of sessList) {
          const s = await r.get('sess:' + sid);
@@ -291,9 +302,14 @@ async function handleAdminApiToken(req, res, email, active) {
       return res.json({ ok: true, message: 'Key deleted & API sessions revoked.' });
     }
     return res.status(404).json({ err: 'Key not found' });
+    
   } else {
-    const userKeys = await getUserKeys();
-    for (const k of userKeys) { await r.del('apitoken:' + k); await r.srem('usertokens:' + uid, k); }
+    // Revoke all
+    const userKeys = await r.smembers('devkeys:' + uid);
+    for (const k of userKeys) { 
+      await r.del('apitoken:' + k); 
+      await r.srem('devkeys:' + uid, k); 
+    }
     return res.json({ ok: true, message: `Revoked all API tokens.` });
   }
 }
