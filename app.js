@@ -281,65 +281,64 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&S.cur&&!$('#dlg').innerHTML&
    ========================================================= */
 if (new URLSearchParams(location.search).has('shared')) {
   history.replaceState(null, '', '/'); // URL clean karo
-
-  (async () => {
-    try {
-      const db = await new Promise((res, rej) => {
-        const req = indexedDB.open('MS_Chat_Share', 1);
-        req.onsuccess = (e) => res(e.target.result);
-        req.onerror = (e) => rej(e.target.error);
-      });
-
-      const tx = db.transaction('shared_files', 'readwrite');
-      const store = tx.objectStore('shared_files');
-      const req = store.getAll();
+  
+  // Check karein jab tak user data load na ho jaye, wait karein
+  const checkBoot = setInterval(async () => {
+    if (S.me) {
+      clearInterval(checkBoot); // User load ho gaya, ab process karein
       
-      req.onsuccess = async () => {
-        const files = req.result;
-        if (!files || files.length === 0) return;
-
-        // Agar user logged in nahi hai, to login screen par bhej dein
-        if (!S.me) {
-          toast('Please login to share files');
-          return;
-        }
-
-        // Kis chat mein bhejna hai wo poocho
-        const r = await dlg({
-          t: 'Send Shared Files',
-          p: `${files.length} file(s) received. Select a chat to send.`,
-          o: S.ch.map(c => nm(ct(c)))
+      try {
+        const db = await new Promise((res, rej) => {
+          const req = indexedDB.open('MS_Chat_Share', 1);
+          req.onsuccess = (e) => res(e.target.result);
+          req.onerror = (e) => rej(e.target.error);
         });
 
-        if (r.i < 0) {
-          store.clear();
-          return;
-        }
-
-        const targetChat = S.ch[r.i].chat;
-
-        // Ek ek karke file upload aur send karein
-        for (const file of files) {
-          const f = new File([file.blob], file.name, { type: file.type });
-          const mediaObj = await up(f); // Upload function
-          if (mediaObj) {
-            await api('/send', { chat: targetChat, media: mediaObj, text: '' });
-          }
-        }
-
-        store.clear();
-        toast('Shared files sent successfully!');
+        const tx = db.transaction('shared_files', 'readwrite');
+        const store = tx.objectStore('shared_files');
+        const req = store.getAll();
         
-        // Agar chat khuli hui hai to refresh karein
-        if (S.cur && S.cur.chat === targetChat) {
-          loadMs();
-        } else {
-          loadChats();
-        }
-      };
-    } catch (err) {
-      console.error('Share target error:', err);
-      toast('Failed to process shared files');
+        req.onsuccess = async () => {
+          const files = req.result;
+          if (!files || files.length === 0) return;
+
+          // Kis chat mein bhejna hai wo poocho
+          const r = await dlg({
+            t: 'Send Shared Files',
+            p: `${files.length} file(s) received. Select a chat to send.`,
+            o: S.ch.map(c => nm(ct(c)))
+          });
+
+          if (r.i < 0) {
+            store.clear();
+            return;
+          }
+
+          const targetChat = S.ch[r.i].chat;
+
+          // Ek ek karke file upload aur send karein
+          for (const file of files) {
+            const f = new File([file.blob], file.name, { type: file.type });
+            const mediaObj = await up(f); // Upload function
+            if (mediaObj) {
+              await api('/send', { chat: targetChat, media: mediaObj, text: '' });
+            }
+          }
+
+          store.clear();
+          toast('Shared files sent successfully!');
+          
+          // Agar chat khuli hui hai to refresh karein
+          if (S.cur && S.cur.chat === targetChat) {
+            loadMs();
+          } else {
+            loadChats();
+          }
+        };
+      } catch (err) {
+        console.error('Share target error:', err);
+        toast('Failed to process shared files');
+      }
     }
-  })();
+  }, 500); // Har 500ms baad check karega
 }
