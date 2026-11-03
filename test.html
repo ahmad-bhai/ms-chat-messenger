@@ -3,39 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MS Chat - API Client</title>
+  <title>MS Chat - Official API Client</title>
   <style>
     :root{--bg:#14101c;--bb:rgba(38,32,52,.82);--bd:rgba(255,255,255,.14);--tx:#fff;--sf:#D0BDF4;--ac:linear-gradient(135deg,#E120E4,#C54FDA 50%,#9B0BE1);--me:#7a2bc4;--fs:16px}
     [data-t=light]{--bg:#f3ecfb;--bb:rgba(255,255,255,.9);--bd:rgba(0,0,0,.1);--tx:#1d1530;--sf:#6a4fa0;--me:#e3c9fb}
     *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     body{font:15px Poppins,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--tx);height:100dvh;overflow:hidden}
     [hidden]{display:none!important}
-    .scr{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);z-index:5}
-    .badge{background:var(--bb);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid var(--bd);border-radius:22px}
-    .hd{display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:56px}
+    .scr{position:fixed;inset:0;display:flex;flex-direction:column;background:radial-gradient(circle at 12% 8%,rgba(225,32,228,.28),transparent 42%),radial-gradient(circle at 92% 28%,rgba(90,70,255,.28),transparent 45%),var(--bg);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);z-index:5}
+    .badge{background:var(--bb);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid var(--bd);border-radius:26px;box-shadow:inset 0 2px 0 rgba(255,255,255,.25),0 10px 26px rgba(0,0,0,.22)}
+    .hd{display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:56px;border-radius:0 0 28px 28px}
     .ttl{font-size:18px;font-weight:700}
-    .inp{width:100%;background:var(--bb);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;color:inherit;font:inherit;outline:0;margin:8px 0}
-    .btn{width:100%;border:0;border-radius:99px;padding:14px;color:#fff;background:var(--ac);font-weight:700;font-size:16px;font-family:inherit;cursor:pointer;margin-top:12px}
-    .au{position:relative;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 18px;max-width:400px;margin:0 auto;width:100%;text-align:center}
-    .au h1{font-size:28px;font-weight:800;margin:10px 0 16px}
-    .hint{opacity:.75;font-size:13px;margin-bottom:14px}
+    .inp{width:100%;background:var(--bb);border:1px solid var(--bd);border-radius:24px;padding:14px 18px;color:inherit;font:inherit;outline:0;margin:8px 0}
+    .btn{width:100%;border:0;border-radius:99px;padding:14px;color:#fff;background:var(--ac);font-weight:700;font-size:16px;font-family:inherit;cursor:pointer;margin-top:12px;box-shadow:0 10px 24px rgba(155,11,225,.45)}
+    .au{position:relative;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;max-width:400px;margin:0 auto;width:100%;text-align:center}
+    .au h1{font-size:30px;font-weight:800;margin:10px 0 16px;background:var(--ac);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .hint{opacity:.75;font-size:13px;margin-bottom:16px}
     #ts{position:fixed;left:0;right:0;bottom:30px;z-index:11;display:flex;justify-content:center;pointer-events:none}
-    .tt{background:#000d;color:#fff;border-radius:99px;padding:10px 18px;font-size:14px}
-    .row{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer}
-    .row:active{background:var(--bd)}
-    .fx{flex:1;min-width:0;text-align:left}
-    .sn{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .av{width:46px;height:46px;border-radius:50%;background:#7a2bc4;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none}
+    .tt{background:#000d;color:#fff;border-radius:99px;padding:10px 20px;font-size:14px;box-shadow:0 8px 20px rgba(0,0,0,.4)}
     
-    /* Chat & Messages styling */
+    /* Rows & Lists */
+    .row{display:flex;gap:14px;align-items:center;padding:12px 18px;margin:4px 10px;cursor:pointer;border-radius:22px;transition:0.2s}
+    .row:active{background:var(--bd);transform:scale(0.98)}
+    .fx{flex:1;min-width:0;text-align:left}
+    .sn{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;margin-top:2px}
+    .r1{display:flex;justify-content:space-between;align-items:center}
+    .av{width:50px;height:50px;border-radius:50%;background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.5),transparent 38%),#7a2bc4;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none;box-shadow:0 6px 14px rgba(0,0,0,.3)}
+    
+    /* Chat & Messages */
     #messages-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-    .msg { max-width: 75%; padding: 8px 12px; border-radius: 16px; font-size: 14px; word-break: break-word; }
-    .msg.me { align-self: flex-end; background: var(--me); border-bottom-right-radius: 4px; }
-    .msg.th { align-self: flex-start; background: var(--bb); border-bottom-left-radius: 4px; border: 1px solid var(--bd); }
-    .msg-time { font-size: 10px; opacity: 0.6; text-align: right; margin-top: 2px; }
-    .chat-cmp { display: flex; gap: 8px; align-items: flex-end; padding: 10px; background: var(--bb); border-top: 1px solid var(--bd); }
-    .chat-cmp textarea { flex: 1; max-height: 100px; resize: none; border-radius: 20px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--bd); color: inherit; font: inherit; outline: 0; }
-    .ib { background: none; border: 0; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 12px; }
+    .msg { max-width: 80%; padding: 10px 14px; border-radius: 20px; font-size: 15px; word-break: break-word; border: 1px solid var(--bd); box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+    .msg.me { align-self: flex-end; background: linear-gradient(135deg,#a02ee8,#6a2bd9); color: #fff; border-bottom-right-radius: 6px; }
+    .msg.th { align-self: flex-start; background: var(--bb); border-bottom-left-radius: 6px; }
+    .msg-time { font-size: 10px; opacity: 0.6; text-align: right; margin-top: 3px; }
+    
+    /* Composition Bar */
+    .chat-cmp { display: flex; gap: 8px; align-items: flex-end; padding: 12px; background: var(--bb); border-top: 1px solid var(--bd); backdrop-filter: blur(18px); }
+    .chat-cmp textarea { flex: 1; max-height: 120px; resize: none; border-radius: 24px; padding: 12px 16px; background: var(--bg); border: 1px solid var(--bd); color: inherit; font: inherit; outline: 0; }
+    .ib { background: none; border: 0; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 14px; transition: 0.2s; }
+    .ib:active { transform: scale(0.9); }
+    .send-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--ac); border: 0; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; box-shadow: 0 6px 16px rgba(155,11,225,.45); }
   </style>
 </head>
 <body>
@@ -77,8 +84,8 @@
   function renderLogin() {
     $('#view').innerHTML = `
       <div class="au">
-        <h1>MS Chat API</h1>
-        <p class="hint">Enter your email to sign in via Developer API</p>
+        <h1>MS Chat</h1>
+        <p class="hint">Sign in with your developer API account</p>
         <input type="email" id="email-inp" class="inp" placeholder="you@example.com" autocomplete="email">
         <button class="btn" id="btn-next">Continue</button>
       </div>
@@ -89,7 +96,7 @@
       const res = await api('/login-start', { email });
       if (res.err) return toast(res.err);
       state.email = email;
-      toast('Code sent successfully!');
+      toast('Verification code sent!');
       renderOTP();
     };
   }
@@ -98,8 +105,8 @@
     $('#view').innerHTML = `
       <div class="au">
         <h1>Enter Code</h1>
-        <p class="hint">Enter 6-digit code sent to <b>${state.email}</b></p>
-        <input type="tel" id="code-inp" class="inp" placeholder="123456" maxlength="6" style="text-align:center;letter-spacing:4px;font-size:20px">
+        <p class="hint">6-digit code sent to <b>${state.email}</b></p>
+        <input type="tel" id="code-inp" class="inp" placeholder="123456" maxlength="6" style="text-align:center;letter-spacing:6px;font-size:22px">
         <button class="btn" id="btn-verify">Verify Code</button>
       </div>
     `;
@@ -116,7 +123,8 @@
   function render2FA() {
     $('#view').innerHTML = `
       <div class="au">
-        <h1>Two-Step Password</h1>
+        <h1>Security</h1>
+        <p class="hint">Enter your two-step verification password</p>
         <input type="password" id="two-inp" class="inp" placeholder="Password">
         <button class="btn" id="btn-2fa">Login</button>
       </div>
@@ -140,12 +148,12 @@
 
   async function loadDashboard() {
     $('#view').innerHTML = `
-      <div class="hd badge" style="border-radius:0">
-        <b class="ttl fx">Chats</b>
-        <button class="ib" onclick="logout()" title="Logout">🚪</button>
+      <div class="hd badge">
+        <b class="ttl fx">MS Chat</b>
+        <button class="ib" onclick="logout()" title="Logout">⚙️</button>
       </div>
-      <div id="chats-list" style="overflow-y:auto;flex:1">
-        <p style="text-align:center;opacity:0.6;padding:30px">Loading chats...</p>
+      <div id="chats-list" style="overflow-y:auto;flex:1;padding:6px 0">
+        <p style="text-align:center;opacity:0.6;padding:40px">Loading chats...</p>
       </div>
     `;
 
@@ -154,15 +162,18 @@
     state.chats = data.chats || [];
 
     if (state.chats.length === 0) {
-      $('#chats-list').innerHTML = '<p style="text-align:center;opacity:0.6;padding:30px">No chats found.</p>';
+      $('#chats-list').innerHTML = '<p style="text-align:center;opacity:0.6;padding:40px">No chats found.</p>';
       return;
     }
 
     $('#chats-list').innerHTML = state.chats.map((c, i) => `
-      <div class="row" onclick="openChat(${i})">
+      <div class="row badge" onclick="openChat(${i})">
         <div class="av">${c.peer.name.charAt(0).toUpperCase()}</div>
         <div class="fx">
-          <b>${c.peer.name}</b>
+          <div class="r1">
+            <b>${c.peer.name}</b>
+            <small style="opacity:0.6">${c.last ? new Date(c.last.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ''}</small>
+          </div>
           <div class="sn">${c.last ? c.last.text : 'No messages yet'}</div>
         </div>
       </div>
@@ -175,14 +186,15 @@
     state.currentChat = c;
 
     $('#view').innerHTML = `
-      <div class="hd badge" style="border-radius:0">
-        <button class="ib" onclick="loadDashboard()">⬅</button>
+      <div class="hd badge">
+        <button class="ib" onclick="loadDashboard()">←</button>
+        <div class="av" style="width:36px;height:36px;font-size:14px">${c.peer.name.charAt(0).toUpperCase()}</div>
         <b class="ttl fx">${c.peer.name}</b>
       </div>
-      <div id="messages-list"><p style="text-align:center;opacity:0.6;margin-top:20px;">Loading messages...</p></div>
+      <div id="messages-list"><p style="text-align:center;opacity:0.6;margin-top:30px;">Loading messages...</p></div>
       <div class="chat-cmp">
         <textarea id="msg-input" rows="1" placeholder="Type a message..."></textarea>
-        <button class="btn" id="btn-send" style="width:auto;margin:0;padding:10px 16px;border-radius:16px;">Send</button>
+        <button class="send-btn" id="btn-send">➤</button>
       </div>
     `;
 
@@ -206,7 +218,7 @@
           <div class="msg-time">${new Date(m.ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
         </div>
       `;
-    }).join('') || '<p style="text-align:center;opacity:0.5">No messages yet</p>';
+    }).join('') || '<p style="text-align:center;opacity:0.5;margin-top:20px">No messages yet</p>';
 
     listEl.scrollTop = listEl.scrollHeight;
   }
