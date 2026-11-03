@@ -72,7 +72,7 @@ Act.olink=el=>window.open(el.dataset.u,'_blank');
 
 /* ---------- profile photo viewer (tap in profile, long-press anywhere) ---------- */
 function dpView(url,name){if(!url)return toast('No profile photo');vwOpen([{url,type:'image',title:name||'',sub:'Profile photo',name:'profile.jpg'}],0)}
-let lpT;document.addEventListener('pointerdown',e=>{const a=e.target.closest&&e.target.closest('img.av[data-dp]');if(!a)return;clearTimeout(lpT);lpT=setTimeout(()=>{S.lp=Date.now();dpView(a.dataset.dp,a.dataset.nm)},450)});
+let lpT;document.addEventListener('pointerdown',e=>{const a=e.target.closest&&e.target.closest('img.av[data-dp]');if(!a||a.closest('#cl'))return;clearTimeout(lpT);lpT=setTimeout(()=>{S.lp=Date.now();dpView(a.dataset.dp,a.dataset.nm)},450)});
 ['pointerup','pointercancel','pointermove','scroll'].forEach(t=>addEventListener(t,()=>clearTimeout(lpT),true));
 document.addEventListener('click',e=>{if(S.lp&&Date.now()-S.lp<700){S.lp=0;e.stopPropagation();e.preventDefault();return}const a=e.target.closest&&e.target.closest('#pg img.av[data-dp]');if(a){e.stopPropagation();dpView(a.dataset.dp,a.dataset.nm)}},true);
 
@@ -100,4 +100,3 @@ if('mediaSession' in navigator){
  const ms=(a,f)=>{try{navigator.mediaSession.setActionHandler(a,f)}catch(e){}};
  ms('play',()=>AP.a.play());ms('pause',()=>AP.a.pause());ms('stop',()=>{AP.a.pause();AP.a.currentTime=0});
  ms('seekbackward',()=>{AP.a.currentTime=Math.max(0,AP.a.currentTime-10)});ms('seekforward',()=>{AP.a.currentTime=Math.min(AP.a.duration||1e9,AP.a.currentTime+10)})}
-  
