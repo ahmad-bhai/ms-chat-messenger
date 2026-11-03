@@ -695,6 +695,22 @@ module.exports = async (req, res) => {
   
   try {
     if (p === '/health') return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT, emailjs: !!(process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY) });
+     // Emoji Proxy Route (Backend se emoji load karne ke liye)
+if (p === '/emoji' && q.name) {
+  try {
+    const emojiUrl = 'https://magic-scripts-emojis.vercel.app/emoji/?id=' + encodeURIComponent(q.name);
+    const emojiRes = await fetch(emojiUrl);
+    if (!emojiRes.ok) return res.status(emojiRes.status).send('Emoji not found');
+    
+    res.setHeader('Content-Type', emojiRes.headers.get('content-type') || 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    
+    const buffer = await emojiRes.arrayBuffer();
+    return res.send(Buffer.from(buffer));
+  } catch (e) {
+    return res.status(500).send('Error loading emoji');
+  }
+}
     if (p === '/upload') return upload(req, res, b);
     
     // Admin API Token routes (generate, list, delete)
