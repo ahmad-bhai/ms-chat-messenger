@@ -677,8 +677,9 @@ async function upload(req, res, body) {
     const j = await handleUpload({
       body, request: req, token: blobToken(),
       onBeforeGenerateToken: async (pathname, payload) => {
+        // payload mein client token aata hai
         if (!payload || !(await r.get('sess:' + payload))) throw new Error('unauthorized');
-        return { maximumSizeInBytes: 5 * 1024 * 1024 * 1024, addRandomSuffix: true }; // 5GB limit
+        return { maximumSizeInBytes: 5 * 1024 * 1024 * 1024, addRandomSuffix: true }; // 5GB
       },
       onUploadCompleted: async () => {}
     });
