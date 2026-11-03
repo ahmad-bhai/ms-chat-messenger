@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en" data-t="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MS Chat - API Client</title>
+  <style>
+    :root{--bg:#14101c;--bb:rgba(38,32,52,.82);--bd:rgba(255,255,255,.14);--tx:#fff;--sf:#D0BDF4;--ac:linear-gradient(135deg,#E120E4,#C54FDA 50%,#9B0BE1);--me:#7a2bc4;--fs:16px}
+    [data-t=light]{--bg:#f3ecfb;--bb:rgba(255,255,255,.9);--bd:rgba(0,0,0,.1);--tx:#1d1530;--sf:#6a4fa0;--me:#e3c9fb}
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{font:15px Poppins,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--tx);height:100dvh;overflow:hidden}
+    [hidden]{display:none!important}
+    .scr{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);z-index:5}
+    .badge{background:var(--bb);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid var(--bd);border-radius:22px}
+    .hd{display:flex;align-items:center;gap:8px;padding:12px 16px;min-height:56px}
+    .ttl{font-size:18px;font-weight:700}
+    .inp{width:100%;background:var(--bb);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;color:inherit;font:inherit;outline:0;margin:8px 0}
+    .btn{width:100%;border:0;border-radius:99px;padding:14px;color:#fff;background:var(--ac);font-weight:700;font-size:16px;font-family:inherit;cursor:pointer;margin-top:12px}
+    .au{position:relative;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 18px;max-width:400px;margin:0 auto;width:100%;text-align:center}
+    .au h1{font-size:28px;font-weight:800;margin:10px 0 16px}
+    .hint{opacity:.75;font-size:13px;margin-bottom:14px}
+    #ts{position:fixed;left:0;right:0;bottom:30px;z-index:11;display:flex;justify-content:center;pointer-events:none}
+    .tt{background:#000d;color:#fff;border-radius:99px;padding:10px 18px;font-size:14px}
+    .row{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer}
+    .row:active{background:var(--bd)}
+    .fx{flex:1;min-width:0;text-align:left}
+    .sn{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .av{width:46px;height:46px;border-radius:50%;background:#7a2bc4;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none}
+  </style>
+</head>
+<body>
+
+<div class="scr" id="app">
+  <!-- Dynamic Screen Content Area -->
+  <div id="view" style="flex:1;display:flex;flex-direction:column;overflow:hidden"></div>
+</div>
+
+<div id="ts"></div>
+
+<script>
+  const API_KEY = 'ms_dev_9f8fcf0e2e34cc97c959637af4b1cf85';
+  const BASE_URL = 'https://ms-chat-messenger.vercel.app/api/ms-api/' + API_KEY;
+  
+  const $ = s => document.querySelector(s);
+  const toast = t => {
+    $('#ts').innerHTML = `<div class="tt">${t}</div>`;
+    clearTimeout(window._tt);
+    window._tt = setTimeout(() => $('#ts').innerHTML = '', 2600);
+  };
+
+  // App State
+  let state = { email: '', pend: '', chats: [] };
+
+  async function api(path, data) {
+    try {
+      const res = await fetch(BASE_URL + path, {
+        method: data ? 'POST' : 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined
+      });
+      return await res.json();
+    } catch (e) {
+      return { err: 'Network error' };
+    }
+  }
+
+  // --- Screens ---
+
+  function renderLogin() {
+    $('#view').innerHTML = `
+      <div class="au">
+        <h1>MS Chat API</h1>
+        <p class="hint">Enter your email to sign in via Developer API</p>
+        <input type="email" id="email-inp" class="inp" placeholder="you@example.com" autocomplete="email">
+        <button class="btn" id="btn-next">Continue</button>
+      </div>
+    `;
+    $('#btn-next').onclick = async () => {
+      const email = $('#email-inp').value.trim();
+      if (!email) return toast('Please enter email');
+      
+      const res = await api('/login-start', { email });
+      if (res.err) return toast(res.err);
+      
+      state.email = email;
+      toast(res.via === 'chat' ? 'Code sent to your MS Chat app!' : 'Code sent to your email!');
+      renderOTP();
+    };
+  }
+
+  function renderOTP() {
+    $('#view').innerHTML = `
+      <div class="au">
+        <h1>Enter Code</h1>
+        <p class="hint">Enter the 6-digit code sent for <b>${state.email}</b></p>
+        <input type="tel" id="code-inp" class="inp" placeholder="123456" maxlength="6" style="text-align:center;letter-spacing:4px;font-size:20px">
+        <button class="btn" id="btn-verify">Verify Code</button>
+      </div>
+    `;
+    $('#btn-verify').onclick = async () => {
+      const code = $('#code-inp').value.trim();
+      if (!code) return toast('Please enter code');
+
+      const res = await api('/login-verify', { email: state.email, code });
+      if (res.err) return toast(res.err);
+
+      if (res.need2fa) {
+        state.pend = res.pend;
+        render2FA();
+      } else if (res.token) {
+        // Successfully logged in! Save token and load chats
+        localStorage.setItem('ms_dev_token', res.token);
+        loadDashboard();
+      }
+    };
+  }
+
+  function render2FA() {
+    $('#view').innerHTML = `
+      <div class="au">
+        <h1>Two-Step Password</h1>
+        <p class="hint">Your account is protected with a 2FA password</p>
+        <input type="password" id="two-inp" class="inp" placeholder="Password">
+        <button class="btn" id="btn-2fa">Login</button>
+      </div>
+    `;
+    $('#btn-2fa').onclick = async () => {
+      const two = $('#two-inp').value;
+      if (!two) return toast('Enter password');
+
+      const res = await api('/login-2fa', { pend: state.pend, two });
+      if (res.err) return toast(res.err);
+
+      if (res.token) {
+        localStorage.setItem('ms_dev_token', res.token);
+        loadDashboard();
+      }
+    };
+  }
+
+  async function loadDashboard() {
+    // Custom fetch wrapper with Authorization Bearer token for protected routes
+    const token = localStorage.getItem('ms_dev_token');
+    
+    $('#view').innerHTML = `
+      <div class="hd badge" style="border-radius:0">
+        <b class="ttl fx">Your Chats</b>
+        <button class="btn" style="width:auto;margin:0;padding:6px 14px;font-size:13px" onclick="logout()">Logout</button>
+      </div>
+      <div id="chats-list" style="overflow-y:auto;flex:1">
+        <p style="text-align:center;opacity:0.6;padding:30px">Loading chats...</p>
+      </div>
+    `;
+
+    try {
+      const res = await fetch(BASE_URL + '/chats', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      
+      if (data.err) {
+        if (data.err === 'unauthorized') return logout();
+        throw new Error(data.err);
+      }
+
+      state.chats = data.chats || [];
+      
+      if (state.chats.length === 0) {
+        $('#chats-list').innerHTML = '<p style="text-align:center;opacity:0.6;padding:30px">No chats found.</p>';
+        return;
+      }
+
+      $('#chats-list').innerHTML = state.chats.map(c => `
+        <div class="row">
+          <div class="av">${c.peer.name.charAt(0).toUpperCase()}</div>
+          <div class="fx">
+            <b>${c.peer.name}</b>
+            <div class="sn">${c.last ? c.last.text : 'No messages yet'}</div>
+          </div>
+        </div>
+      `).join('');
+
+    } catch (e) {
+      $('#chats-list').innerHTML = `<p style="text-align:center;color:#ff5b5b;padding:30px">Failed to load chats</p>`;
+    }
+  }
+
+  window.logout = () => {
+    localStorage.removeItem('ms_dev_token');
+    renderLogin();
+  };
+
+  // Initial Boot Check
+  window.onload = () => {
+    if (localStorage.getItem('ms_dev_token')) {
+      loadDashboard();
+    } else {
+      renderLogin();
+    }
+  };
+</script>
+</body>
+</html>
