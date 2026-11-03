@@ -6,7 +6,7 @@ const I={moon:'M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 01-4.4 2.26 5
 const ic=n=>`<svg class="i" viewBox="0 0 24 24"><path d="${I[n]}"/></svg>`,tl=n=>`<span class="tile">${ic(n)}</span>`;
 const EMS='(\\p{Extended_Pictographic}(?:\\uFE0F|\\u200D\\p{Extended_Pictographic}|\\p{Emoji_Modifier})*|[\\u{1F1E6}-\\u{1F1FF}]{2})';
 const EM=new RegExp(EMS,'gu'),BIG=new RegExp('^'+EMS+'$','u');
-const eu=e=>'api/emoji?name='+E(e);
+const eu=e=>'/api/emoji?name='+E(e);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const nm=s=>esc(s).replace(EM,e=>`<img class="em" src="${eu(e)}" alt="${e}">`);
 const fm=s=>s.replace(/(?<=^|\n)&gt; ?([^\n]*)\n?/g,'<blockquote>$1</blockquote>').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\*\*([\s\S]+?)\*\*/g,'<b>$1</b>').replace(/__([\s\S]+?)__/g,'<i>$1</i>').replace(/~~([\s\S]+?)~~/g,'<s>$1</s>').replace(/\+\+([\s\S]+?)\+\+/g,'<u>$1</u>').replace(/\|\|([\s\S]+?)\|\|/g,'<span class="spo" data-a="spo">$1</span>');
@@ -149,8 +149,35 @@ document.addEventListener('selectionchange',()=>{const i=$('#inp'),f=$('#ft');if
 Act.spo=el=>{const a=el.querySelector('.sh'),b=el.querySelector('.sv');if(!a||!b)return;const k=+el.dataset.k,h=b.hidden;b.hidden=!h;a.hidden=h;h?S.rv.add(k):S.rv.delete(k)};
 Act.repl=()=>{S.fm='rep';fl.accept='*/*';fl.removeAttribute('capture');fl.multiple=false;fl.click()};
 const tdraw=()=>{if(S.td)return;S.td=setTimeout(()=>{S.td=0;drawMs()},250)};
+
+// VERCEL BLOB UPLOAD LOGIC
 async function flush(){if(S.fl)return;S.fl=1;try{while(OB.length){const m=OB[0];
-if(m.file){try{const url=await upload2(m.file,p=>{m.up=p;tdraw()});m.blob=m.media.url;m.media={...m.media,url};delete m.media.local;m.file=null;m.up=100;m.er=0}catch(e){if(!m.er){m.er=1;toast(esc('Upload failed: '+(e.code||e.message||'network')))}break}}
+if(m.file){try{
+  // Upload with progress
+  const url = await new Promise(async (resolve, reject) => {
+    try {
+      const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
+      const newBlob = await upload(m.file.name, m.file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+        clientPayload: S.ac[S.ai].token,
+        onUploadProgress: (progressEvent) => {
+          if (m.up !== progressEvent.percentage) {
+            m.up = progressEvent.percentage;
+            tdraw();
+          }
+        }
+      });
+      resolve(newBlob.url);
+    } catch (err) { reject(err); }
+  });
+  m.blob = m.media.url;
+  m.media = { ...m.media, url };
+  delete m.media.local;
+  m.file = null; m.up = 100; m.er = 0;
+} catch(e) {
+  if(!m.er){m.er=1;toast(esc('Upload failed: '+(e.code||e.message||'network')))}break
+}}
 let j;try{j=await api('/send',{chat:m.chat,text:m.text,media:m.media,reply:m.reply})}catch(e){break}
 if(!j.msg){OB.shift();S.ms=S.ms.filter(x=>x.id!==m.id);toast(esc(j.err||'Message not sent'));drawMs();continue}
 OB.shift();S.ms=S.ms.filter(x=>x.id!==m.id);if(m.blob)try{URL.revokeObjectURL(m.blob)}catch(e){}if(S.cur&&S.cur.chat===m.chat){S.sn&&S.sn.add(j.msg.id);merge(j.msg)}drawMs()}}finally{S.fl=0}}
