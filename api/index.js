@@ -284,24 +284,29 @@ async function handleAdminApiToken(req, res, email, active) {
 
     return res.json({ ok: true, keys: userKeys });
     
-  } else if (active === 'delete') {
+    } else if (active === 'delete') {
+    // Dono jagah se token check karein (query parameter ya body)
     const token = req.query.token || (req.body && req.body.token);
     if (!token) return res.status(400).json({ err: 'Token required' });
     
-    if (await r.get('apitoken:' + token) === uid) {
+    // Check karein ke key exist karti hai ya nahi
+    const ownerUid = await r.get('apitoken:' + token);
+    
+    if (ownerUid) {
       await r.del('apitoken:' + token);
-      await r.srem('devkeys:' + uid, token); // Remove from set
+      await r.srem('devkeys:' + ownerUid, token);
       
       // Auto logout sessions linked to this API key
-      const sessList = await r.smembers('us:' + uid);
+      const sessList = await r.smembers('us:' + ownerUid);
       for (const sid of sessList) {
          const s = await r.get('sess:' + sid);
-         if (s && s.viaApi) { await r.del('sess:' + sid); await r.srem('us:' + uid, sid); }
+         if (s && s.viaApi) { await r.del('sess:' + sid); await r.srem('us:' + ownerUid, sid); }
       }
       
       return res.json({ ok: true, message: 'Key deleted & API sessions revoked.' });
     }
     return res.status(404).json({ err: 'Key not found' });
+
     
   } else {
     // Revoke all
