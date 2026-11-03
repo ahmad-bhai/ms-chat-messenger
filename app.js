@@ -6,7 +6,7 @@ const I={moon:'M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 01-4.4 2.26 5
 const ic=n=>`<svg class="i" viewBox="0 0 24 24"><path d="${I[n]}"/></svg>`,tl=n=>`<span class="tile">${ic(n)}</span>`;
 const EMS='(\\p{Extended_Pictographic}(?:\\uFE0F|\\u200D\\p{Extended_Pictographic}|\\p{Emoji_Modifier})*|[\\u{1F1E6}-\\u{1F1FF}]{2})';
 const EM=new RegExp(EMS,'gu'),BIG=new RegExp('^'+EMS+'$','u');
-const eu=e=>'https://magic-scripts-emojis.vercel.app/emoji/?id='+E(e);
+const eu=e=>'api/emoji?name='+E(e);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const nm=s=>esc(s).replace(EM,e=>`<img class="em" src="${eu(e)}" alt="${e}">`);
 const fm=s=>s.replace(/(?<=^|\n)&gt; ?([^\n]*)\n?/g,'<blockquote>$1</blockquote>').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\*\*([\s\S]+?)\*\*/g,'<b>$1</b>').replace(/__([\s\S]+?)__/g,'<i>$1</i>').replace(/~~([\s\S]+?)~~/g,'<s>$1</s>').replace(/\+\+([\s\S]+?)\+\+/g,'<u>$1</u>').replace(/\|\|([\s\S]+?)\|\|/g,'<span class="spo" data-a="spo">$1</span>');
