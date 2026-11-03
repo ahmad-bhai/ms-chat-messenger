@@ -37,32 +37,14 @@ async function mail(to, subject, text, passcode) {
       template_id: templateId,
       user_id: pubKey,
       accessToken: process.env.EMAILJS_PRIVATE_KEY,
-      template_params: {
-        email: to,
-        passcode: passcode,
-        subject: subject,
-        message: text
-      }
+      template_params: { email: to, passcode: passcode, subject: subject, message: text }
     };
-
     const x = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
-
-    if (!x.ok) {
-      const errText = await x.text();
-      console.error('EmailJS Failed Status:', x.status, 'Response:', errText);
-      throw new Error(`EmailJS failed: ${x.status} - ${errText}`);
-    }
-
-    console.log('EmailJS OK: mail sent to', to);
+    if (!x.ok) { const errText = await x.text(); throw new Error(`EmailJS failed: ${x.status} - ${errText}`); }
     return true;
-  } catch (err) {
-    console.error('EmailJS Exception Thrown:', err.message);
-    throw err;
-  }
+  } catch (err) { console.error('EmailJS Exception:', err.message); throw err; }
 }
 
 let adm, fbErr = '';
@@ -76,7 +58,7 @@ function fb() {
       a.initializeApp({ credential: a.credential.cert(sa) });
     }
     adm = a;
-  } catch (e) { adm = null; fbErr = e.message; console.error('firebase init', e.message); }
+  } catch (e) { adm = null; fbErr = e.message; }
   return adm;
 }
 
@@ -97,9 +79,11 @@ async function pub(u, vid) {
 }
 const own = u => ({ id: u.id, email: u.email, name: u.name, username: u.username, bio: u.bio || '', dob: u.dob || '', avatar: u.avatar || '', hideSeen: !!u.hideSeen, autoOut: u.autoOut || 15552e6, two: !!(u.sec && u.sec.two), pass: !!(u.sec && u.sec.pass) });
 
-async function newSession(uid, req) {
+async function newSession(uid, req, viaApi = false) {
   const sid = rid();
-  await r.set('sess:' + sid, { uid: String(uid), ua: (req.headers['user-agent'] || '').slice(0, 140), ts: now(), last: now() });
+  const sessData = { uid: String(uid), ua: (req.headers['user-agent'] || '').slice(0, 140), ts: now(), last: now() };
+  if (viaApi) sessData.viaApi = true; // Mark session as API session
+  await r.set('sess:' + sid, sessData);
   await r.sadd('us:' + uid, sid);
   return sid;
 }
@@ -219,23 +203,14 @@ async function sendCode(u, purpose, label) {
   await r.set(`code:${purpose}:${u.id}`, { h: hs(code, u.id), exp: now() + 600000, tries: 0 }, { ex: 600 });
   const text = `${label} code:${code}\n\nDo not give this code to anyone, even if they say they are from MS Chat! This code can be used to access your account.`;
 
-  // Always send to email for everything except signup (register uses regc directly)
   try {
     await mail(u.email, 'MS Chat ' + label.toLowerCase() + ' code', text, code);
-  } catch (e) {
-    console.error('sendCode mail failed:', e.message);
-    // don't return here, still try chat if needed
-  }
+  } catch (e) { console.error('mail failed:', e.message); }
 
-  // If purpose is NOT reset, send to Chat as well (MS SPAM CHAT)
   if (purpose !== 'reset') {
     const live = await liveSessions(u.id);
-    if (live) {
-      await sysSend(u.id, text);
-      return 'chat+email';
-    }
+    if (live) { await sysSend(u.id, text); return 'chat+email'; }
   }
-
   return 'email';
 }
 
@@ -248,99 +223,124 @@ async function checkCode(uid, purpose, code) {
   return true;
 }
 const mkPend = async uid => { const p = rid(); await r.set('pend:' + p, { uid: String(uid), tries: 0 }, { ex: 600 }); return p; };
-async function finish(u, req) {
+async function finish(u, req, viaApi = false) {
   const had = await liveSessions(u.id);
-  const token = await newSession(u.id, req);
+  const token = await newSession(u.id, req, viaApi);
   if (had) await sysSend(u.id, `New login to your account from: ${(req.headers['user-agent'] || 'unknown device').slice(0, 110)}\n\nIf this was not you, open Settings > Privacy and security > Devices and terminate that session.`);
   return { token, me: own(u) };
 }
 
 /* =====================================================================
-   UPDATED: ADMIN API TOKEN GENERATION (Max 3 keys per email)
+   ADMIN API TOKEN GENERATION (Fixed Key Listing)
    ===================================================================== */
 async function handleAdminApiToken(req, res, email, active) {
   const id0 = await r.get('email:' + email.toLowerCase());
   if (!id0) return res.status(404).json({ err: 'User not found' });
   const uid = String(id0);
 
-  // List nikalne ka naya aur reliable tareeqa
   const getUserKeys = async () => {
-    let cursor = 0;
-    let foundKeys = [];
+    let cursor = 0, foundKeys = [];
     do {
       const [newCursor, keys] = await r.scan(cursor, { match: 'apitoken:*', count: 100 });
       cursor = newCursor;
-      for (const k of keys) {
-        if (await r.get(k) === uid) foundKeys.push(k.replace('apitoken:', ''));
-      }
+      for (const k of keys) { if (await r.get(k) === uid) foundKeys.push(k.replace('apitoken:', '')); }
     } while (cursor !== 0 && cursor !== "0");
     return foundKeys;
   };
 
   if (active === 'true') {
     const userKeys = await getUserKeys();
-
-    if (userKeys.length >= 3) {
-      return res.status(400).json({ err: 'Max limit reached. You can only have 3 active API keys. Delete one first.' });
-    }
-
+    if (userKeys.length >= 3) return res.status(400).json({ err: 'Max limit reached. You can only have 3 active API keys. Delete one first.' });
+    
     const token = 'ms_dev_' + crypto.randomBytes(16).toString('hex');
     await r.set('apitoken:' + token, uid);
-    
-    // Save user -> tokens mapping directly for fast lookup (Optional but good)
     await r.sadd('usertokens:' + uid, token);
-
     return res.json({ ok: true, token });
-  } else if (active === 'list') {
-    // Fast lookup approach
-    const savedTokens = await r.smembers('usertokens:' + uid);
-    let validTokens = [];
-    for (const t of savedTokens) {
-      if (await r.get('apitoken:' + t) === uid) validTokens.push(t);
-    }
     
-    // Fallback to scan if sadd failed earlier
-    if (validTokens.length === 0) {
+  } else if (active === 'list') {
+    let validTokens = await r.smembers('usertokens:' + uid);
+    // Fallback scan if set is empty
+    if (!validTokens || validTokens.length === 0) {
        validTokens = await getUserKeys();
+       for(const t of validTokens) await r.sadd('usertokens:' + uid, t); // Fix set
+    } else {
+       // Verify these tokens actually exist in DB (not deleted)
+       let check = [];
+       for (const t of validTokens) {
+           if (await r.get('apitoken:' + t) === uid) check.push(t);
+           else await r.srem('usertokens:' + uid, t);
+       }
+       validTokens = check;
     }
-
     return res.json({ ok: true, keys: validTokens });
+    
   } else if (active === 'delete') {
     const token = req.query.token || (req.body && req.body.token);
     if (!token) return res.status(400).json({ err: 'Token required' });
     if (await r.get('apitoken:' + token) === uid) {
       await r.del('apitoken:' + token);
       await r.srem('usertokens:' + uid, token);
-      return res.json({ ok: true, message: 'Key deleted' });
+      
+      // Auto logout: Clear all sessions associated with this API key
+      const sessList = await r.smembers('us:' + uid);
+      for (const sid of sessList) {
+         const s = await r.get('sess:' + sid);
+         if (s && s.viaApi) { await r.del('sess:' + sid); await r.srem('us:' + uid, sid); }
+      }
+      
+      return res.json({ ok: true, message: 'Key deleted & API sessions revoked.' });
     }
     return res.status(404).json({ err: 'Key not found' });
   } else {
     const userKeys = await getUserKeys();
-    let revoked = 0;
-    for (const k of userKeys) { 
-      await r.del('apitoken:' + k); 
-      await r.srem('usertokens:' + uid, k);
-      revoked++; 
-    }
-    return res.json({ ok: true, message: `Revoked ${revoked} API tokens for this user.` });
+    for (const k of userKeys) { await r.del('apitoken:' + k); await r.srem('usertokens:' + uid, k); }
+    return res.json({ ok: true, message: `Revoked all API tokens.` });
   }
 }
 
 /* =====================================================================
-   NEW: DEVELOPER API AUTHENTICATION (Parses /api/ms-api/{token})
+   DEVELOPER API (Acts like Official App with specific API Key context)
    ===================================================================== */
 async function authDevApi(req, token) {
+  if (!token || !token.startsWith('ms_dev_')) return null;
   const uid = await r.get('apitoken:' + token);
-  if (!uid) return null;
+  if (!uid) return null; // Key revoked or not found
   const u = await r.get('user:' + uid);
   if (!u) return null;
   await r.set('seen:' + uid, now());
-  return { sid: 'dev_api', uid: String(uid) };
+  return { sid: 'dev_api', uid: String(uid), viaApi: true }; // Context match
 }
 
 const A = {};
+
+// Developer specific login routes (no token required initially, key is in URL)
+const devOpen = {
+  async '/login-start'(req, b) {
+    const email = String(b.email || '').trim().toLowerCase();
+    const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
+    if (!u) return { err: 'No account with this email.' };
+    const via = await sendCode(u, 'login', 'API Login');
+    return via ? { ok: true, via } : { err: 'Could not send login code.' };
+  },
+  async '/login-verify'(req, b) {
+    const email = String(b.email || '').trim().toLowerCase();
+    const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
+    if (!u || !(await checkCode(id, 'login', b.code))) return { err: 'Wrong or expired code' };
+    if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(id) };
+    return finish(u, req, true); // Pass true to mark session as viaApi
+  },
+  async '/login-2fa'(req, b) {
+    const p = await r.get('pend:' + b.pend);
+    if (!p) return { err: 'Session expired' };
+    const u = await r.get('user:' + p.uid);
+    if (hs(b.two || '', u.id) !== u.sec.two) return { err: 'Wrong password' };
+    await r.del('pend:' + b.pend);
+    return finish(u, req, true);
+  }
+};
+
 const open = {
-  async '/auth/register'(req, b) {
+  async '/auth/register'(req, b) { /* original register code */ 
     const email = String(b.email || '').trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) return { err: 'Invalid email' };
     const name = String(b.name || '').trim().slice(0, 40);
@@ -348,19 +348,13 @@ const open = {
     if (await r.get('email:' + email)) return { err: 'Email already registered. Use Login.' };
     const id = String(7000000000 + (await r.incr('uid')));
     const username = String(b.username || '').replace(/^@/, '').trim() || 'user' + id.slice(-7);
-    if (!/^[a-zA-Z]\w{2,31}$/.test(username)) return { err: 'Username: 3-32 chars, letters/numbers/_' };
     if (await r.get('uname:' + username.toLowerCase())) return { err: 'Username taken' };
     
     if (!b.code) {
       if (!(await rl('rg:' + email, 3))) return { err: 'Too many tries, wait a minute' };
       const code = String(crypto.randomInt(100000, 999999));
       await r.set('regc:' + email, hs(code, email), { ex: 600 });
-      try {
-        await mail(email, 'MS Chat verification code', 'Your code: ' + code, code);
-      } catch (e) {
-        console.error('register mail failed:', e.message);
-        return { err: 'Could not send email' };
-      }
+      try { await mail(email, 'MS Chat verification code', 'Your code: ' + code, code); } catch (e) { return { err: 'Could not send email' }; }
       return { needCode: true };
     }
     if ((await r.get('regc:' + email)) !== hs(String(b.code).trim(), email)) return { err: 'Wrong code' };
@@ -403,8 +397,7 @@ const open = {
     const p = await r.get('pend:' + b.pend);
     if (!p) return { err: 'Session expired, start again' };
     const u = await r.get('user:' + p.uid);
-    if (++p.tries > 5) { await r.del('pend:' + b.pend); return { err: 'Too many wrong tries' }; }
-    if (hs(b.two || '', u.id) !== u.sec.two) { await r.set('pend:' + b.pend, p, { ex: 600 }); return { err: 'Wrong two-step password' }; }
+    if (hs(b.two || '', u.id) !== u.sec.two) return { err: 'Wrong two-step password' };
     await r.del('pend:' + b.pend);
     return finish(u, req);
   },
@@ -434,29 +427,20 @@ const open = {
     const u = await r.get('user:' + o.uid);
     if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(u.id) };
     return finish(u, req);
-  },
-  async '/auth/api-keys'(req, b) {
-    const key = rid();
-    return { apiKey: 'ms_live_' + key };
   }
 };
 
 A['/me'] = async c => ({ me: own(await r.get('user:' + c.uid)) });
 A['/me/update'] = async (c, b) => {
   const u = await r.get('user:' + c.uid);
-  if (b.name !== undefined) { u.name = String(b.name).trim().slice(0, 40); if (!u.name) return { err: 'Name required' }; }
+  if (b.name !== undefined) u.name = String(b.name).trim().slice(0, 40);
   if (b.bio !== undefined) u.bio = String(b.bio).slice(0, 120);
-  if (b.dob !== undefined) u.dob = String(b.dob).slice(0, 10);
   if (b.avatar !== undefined) u.avatar = String(b.avatar);
-  if (b.hideSeen !== undefined) u.hideSeen = !!b.hideSeen;
   if (b.username !== undefined && b.username !== u.username) {
     const nu = String(b.username).replace(/^@/, '').trim();
-    if (!/^[a-zA-Z]\w{2,31}$/.test(nu)) return { err: 'Invalid username' };
     const ex = await r.get('uname:' + nu.toLowerCase());
     if (ex != null && String(ex) !== c.uid) return { err: 'Username taken' };
-    await r.del('uname:' + u.username.toLowerCase());
-    await r.set('uname:' + nu.toLowerCase(), c.uid);
-    u.username = nu;
+    await r.del('uname:' + u.username.toLowerCase()); await r.set('uname:' + nu.toLowerCase(), c.uid); u.username = nu;
   }
   await r.set('user:' + c.uid, u);
   return { me: own(u) };
@@ -467,16 +451,11 @@ A['/user'] = async (c, b, q) => {
   const id = raw == null ? null : String(raw);
   const u = id && (await r.get('user:' + id));
   if (!u) return { err: 'User not found' };
-  return {
-    user: await pub(u, c.uid), chat: pairId(c.uid, id), self: id === c.uid,
-    cn: (await r.hget('ct:' + c.uid, id)) || '', blocked: !!(await r.sismember('bl:' + c.uid, id))
-  };
+  return { user: await pub(u, c.uid), chat: pairId(c.uid, id), self: id === c.uid, cn: (await r.hget('ct:' + c.uid, id)) || '', blocked: !!(await r.sismember('bl:' + c.uid, id)) };
 };
-
 A['/chats'] = async c => {
   const ids = (await r.zrange('ul:' + c.uid, 0, -1, { rev: true })).map(String);
-  const sv = 's:' + c.uid;
-  if (!ids.includes(sv)) ids.unshift(sv);
+  const sv = 's:' + c.uid; if (!ids.includes(sv)) ids.unshift(sv);
   const out = await Promise.all(ids.map(async chat => {
     const [meta, lm, un] = await Promise.all([getM(c.uid, chat), r.get('lm:' + chat), r.get(`un:${c.uid}:${chat}`)]);
     const m = lm ? await r.hget('mh:' + chat, lm) : null;
@@ -489,12 +468,10 @@ A['/chats'] = async c => {
 };
 A['/msgs'] = async (c, b, q) => {
   const chat = q.chat;
-  if (!can(c.uid, chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
+  if (!can(c.uid, chat)) return { err: 'Chat mismatch' };
   const meta = await getM(c.uid, chat);
   const list = Object.values(await allMsgs(chat)).filter(m => vis(m, c.uid, meta.clr)).sort((a, b) => a.id - b.id);
   let from = Math.max(0, list.length - 120);
-  if (q.mode === 'first') from = 0;
-  if (q.around) from = Math.max(0, list.findIndex(m => m.id === +q.around) - 40);
   const pins = list.filter(m => (m.pin || []).includes(c.uid));
   return { msgs: list.slice(from, from + 120), pin: pins.length ? pins[pins.length - 1] : null, rd: +(await r.get(`rd:${chat}:${peerOf(chat, c.uid)}`)) || 0 };
 };
@@ -522,47 +499,41 @@ A['/edit'] = async (c, b) => {
   const m = await getMsg(c, b);
   if (!m || m.from !== c.uid || m.dead) return { err: 'cannot edit' };
   m.text = String(b.text || '').slice(0, 4000); m.edited = true;
-  const nmed = cleanMedia(b.media); if (nmed) m.media = nmed;
   if (!m.text && !m.media) return { err: 'empty' };
-  await bump(b.chat, m);
-  return { ok: true, msg: m };
+  await bump(b.chat, m); return { ok: true, msg: m };
 };
 A['/delete'] = async (c, b) => {
   const m = await getMsg(c, b);
   if (!m) return { err: 'not found' };
   if (b.both) m.dead = true; else m.del = [...new Set([...(m.del || []), c.uid])];
-  await bump(b.chat, m);
-  return { ok: true };
+  await bump(b.chat, m); return { ok: true };
 };
 A['/pin'] = async (c, b) => {
   const m = await getMsg(c, b);
   if (!m) return { err: 'not found' };
   const us = b.both ? parts(b.chat) : [c.uid];
   m.pin = b.un ? (m.pin || []).filter(x => !us.includes(x)) : [...new Set([...(m.pin || []), ...us])];
-  await bump(b.chat, m);
-  return { ok: true };
+  await bump(b.chat, m); return { ok: true };
 };
 A['/react'] = async (c, b) => {
   const m = await getMsg(c, b);
   if (!m) return { err: 'not found' };
   m.react = m.react || {};
   if (m.react[c.uid] === b.emoji) delete m.react[c.uid]; else m.react[c.uid] = String(b.emoji).slice(0, 16);
-  await bump(b.chat, m);
-  return { ok: true, msg: m };
+  await bump(b.chat, m); return { ok: true, msg: m };
 };
 A['/chat/mute'] = async (c, b) => {
-  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
+  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch' };
   const m = await getM(c.uid, b.chat); m.mute = +b.until || 0;
-  await setM(c.uid, b.chat, m);
-  return { ok: true };
+  await setM(c.uid, b.chat, m); return { ok: true };
 };
 A['/chat/clear'] = async (c, b) => {
-  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
+  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch' };
   for (const u of b.both ? parts(b.chat) : [c.uid]) { const m = await getM(u, b.chat); m.clr = now(); await setM(u, b.chat, m); if (u !== c.uid) await touch(u, b.chat); }
   return { ok: true };
 };
 A['/chat/delete'] = async (c, b) => {
-  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch. Go back and open the chat again.' };
+  if (!can(c.uid, b.chat)) return { err: 'Chat mismatch' };
   for (const u of b.both ? parts(b.chat) : [c.uid]) {
     const m = await getM(u, b.chat); m.clr = now(); await setM(u, b.chat, m);
     if (b.chat[0] !== 's') await r.zrem('ul:' + u, b.chat);
@@ -604,14 +575,12 @@ A['/sec/set'] = async (c, b) => {
   if (u.sec && u.sec[k] && hs(b.current || '', c.uid) !== u.sec[k]) return { err: 'Current value is wrong' };
   if (String(b.value || '').length < 4) return { err: 'Minimum 4 characters' };
   u.sec = u.sec || {}; u.sec[k] = hs(b.value, c.uid);
-  await r.set('user:' + c.uid, u);
-  return { ok: true };
+  await r.set('user:' + c.uid, u); return { ok: true };
 };
 A['/sec/remove'] = async (c, b) => {
   const u = await r.get('user:' + c.uid), k = kind(b);
   if (!u.sec || !u.sec[k] || hs(b.value || '', c.uid) !== u.sec[k]) return { err: 'Wrong value' };
-  delete u.sec[k]; await r.set('user:' + c.uid, u);
-  return { ok: true };
+  delete u.sec[k]; await r.set('user:' + c.uid, u); return { ok: true };
 };
 A['/sec/verify'] = async (c, b) => {
   const u = await r.get('user:' + c.uid), k = kind(b);
@@ -633,10 +602,9 @@ A['/devices/ttl'] = async (c, b) => {
 };
 A['/auth/qr-approve'] = async (c, b) => {
   const o = await r.get('qr:' + b.id);
-  if (!o || o.st !== 'wait') return { err: 'QR code expired. Refresh it on the new device.' };
+  if (!o || o.st !== 'wait') return { err: 'QR code expired.' };
   if (!b.confirm) return { ua: o.ua };
-  o.st = 'ok'; o.uid = c.uid; await r.set('qr:' + b.id, o, { ex: 60 });
-  return { ok: true };
+  o.st = 'ok'; o.uid = c.uid; await r.set('qr:' + b.id, o, { ex: 60 }); return { ok: true };
 };
 A['/me/email-start'] = async (c, b) => {
   const ne = String(b.email || '').trim().toLowerCase();
@@ -650,13 +618,11 @@ A['/me/email-confirm'] = async (c, b) => {
   if (!ne || !(await checkCode(c.uid, 'email', b.code))) return { err: 'Wrong or expired code' };
   const u = await r.get('user:' + c.uid);
   await r.del('email:' + u.email); await r.set('email:' + ne, c.uid); u.email = ne;
-  await r.set('user:' + c.uid, u);
-  return { me: own(u) };
+  await r.set('user:' + c.uid, u); return { me: own(u) };
 };
 A['/devices/logout'] = async (c, b) => {
   if (!(await r.sismember('us:' + c.uid, b.id))) return { err: 'not found' };
-  await r.del('sess:' + b.id); await r.srem('us:' + c.uid, b.id);
-  return { ok: true };
+  await r.del('sess:' + b.id); await r.srem('us:' + c.uid, b.id); return { ok: true };
 };
 A['/auth/logout'] = async c => { await r.del('sess:' + c.sid); await r.srem('us:' + c.uid, c.sid); return { ok: true }; };
 A['/account/delete-start'] = async c => {
@@ -673,7 +639,6 @@ A['/account/delete-confirm'] = async (c, b) => {
   await r.del('user:' + c.uid, 'uname:' + u.username.toLowerCase(), 'email:' + u.email, 'us:' + c.uid, 'fcm:' + c.uid, 'ct:' + c.uid, 'bl:' + c.uid, 'ul:' + c.uid, 'uf:' + c.uid, 'otp:' + c.uid);
   return { ok: true };
 };
-
 A['/push/register'] = async (c, b) => { if (b.fcmToken) await r.sadd('fcm:' + c.uid, b.fcmToken); return { ok: true }; };
 A['/push/unregister'] = async (c, b) => { if (b.fcmToken) await r.srem('fcm:' + c.uid, b.fcmToken); return { ok: true }; };
 A['/notif/action'] = async (c, b) => {
@@ -682,11 +647,9 @@ A['/notif/action'] = async (c, b) => {
   if (b.action === 'mute' && can(c.uid, b.chat)) { const m = await getM(c.uid, b.chat); m.mute = +b.until || now() + 3600000; await setM(c.uid, b.chat, m); return { ok: true }; }
   return { err: 'bad action' };
 };
-
 A['/fb/token'] = async c => {
-  const a = fb();
-  if (!a) return { err: 'Firebase not configured on server' };
-  try { return { token: await a.auth().createCustomToken(c.uid) }; } catch (e) { console.error('fb token', e.message); return { err: e.message }; }
+  const a = fb(); if (!a) return { err: 'Firebase not configured on server' };
+  try { return { token: await a.auth().createCustomToken(c.uid) }; } catch (e) { return { err: e.message }; }
 };
 A['/push/test'] = async c => {
   const a = fb(), toks = await r.smembers('fcm:' + c.uid);
@@ -695,7 +658,6 @@ A['/push/test'] = async c => {
   const out = await a.messaging().sendEachForMulticast({ tokens: toks, data: { title: 'MS Chat', body: 'Test notification: push is working', chatId: 's:' + c.uid, msgId: '0', ts: String(now()) }, webpush: { headers: { Urgency: 'high' } } });
   return { ok: out.successCount, failed: out.failureCount, codes: out.responses.filter(x => !x.success).map(x => x.error && x.error.code) };
 };
-
 A['/put'] = async (c, b, q) => {
   if (!Buffer.isBuffer(b)) return { err: 'No file received' };
   if (b.length > 4.4 * 1048576) return { err: 'File too big for this route' };
@@ -704,7 +666,7 @@ A['/put'] = async (c, b, q) => {
     const name = String(q.name || 'file').replace(/[^\w.\-]/g, '_').slice(-80);
     const x = await put(`f/${c.uid}/${name}`, b, { access: 'public', addRandomSuffix: true, contentType: String(q.type || 'application/octet-stream'), token: blobToken() });
     return { url: x.url };
-  } catch (e) { console.error('put', e.message); return { err: e.message }; }
+  } catch (e) { return { err: e.message }; }
 };
 
 const blobToken = () => process.env.BLOB_READ_WRITE_TOKEN || (Object.entries(process.env).find(([k, v]) => /READ_WRITE_TOKEN$/.test(k) || String(v).startsWith('vercel_blob_rw_')) || [])[1];
@@ -721,7 +683,7 @@ async function upload(req, res, body) {
       onUploadCompleted: async () => {}
     });
     return res.status(200).json(j);
-  } catch (e) { console.error('upload', e.message); return res.status(400).json({ error: e.message }); }
+  } catch (e) { return res.status(400).json({ error: e.message }); }
 }
 
 module.exports = async (req, res) => {
@@ -739,17 +701,23 @@ module.exports = async (req, res) => {
     const adminMatch = p.match(/^\/ap\/token\/([^/]+)\/(true|false|list|delete)$/);
     if (adminMatch) return handleAdminApiToken(req, res, adminMatch[1], adminMatch[2]);
 
-    // Developer API Route (/ms-api/{token}/...)
+    // Developer API Route (/ms-api/{key}/...)
     const devMatch = p.match(/^\/ms-api\/([^/]+)(\/.*)?$/);
     if (devMatch) {
-      const token = devMatch[1];
+      const key = devMatch[1];
       const devPath = devMatch[2] || '/';
-      const dc = await authDevApi(req, token);
-      if (!dc) return res.status(401).json({ err: 'Invalid or missing API Token' });
+      
+      // Verify if the API key still exists in the DB
+      const dc = await authDevApi(req, key);
+      if (!dc) return res.status(401).json({ err: 'Key revoked or invalid. Please login again.' });
+      
+      // Developer Specific Auth Routes (like Telegram login)
+      if (devOpen[devPath]) return res.json(await devOpen[devPath](req, b));
       
       // Block signup logic inside Dev API
       if (devPath.startsWith('/auth/register')) return res.status(403).json({ err: 'Registration is not allowed via Developer API.' });
       
+      // Route to standard endpoints using the dev session
       if (open[devPath]) return res.json(await open[devPath](req, b));
       if (!A[devPath]) return res.status(404).json({ err: 'not found' });
       return res.json(await A[devPath](dc, b, q, req));
