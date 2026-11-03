@@ -239,10 +239,7 @@ async function handleAdminApiToken(req, res, email, active) {
   const uid = String(id0);
 
   if (active === 'true') {
-    // Get current keys for limit check
     let userKeys = await r.smembers('devkeys:' + uid);
-    
-    // Fallback to scan if smembers is empty (for old keys)
     if (!userKeys || userKeys.length === 0) {
       const allKeys = await r.keys('apitoken:*');
       userKeys = [];
@@ -256,20 +253,12 @@ async function handleAdminApiToken(req, res, email, active) {
     }
 
     const token = 'ms_dev_' + crypto.randomBytes(16).toString('hex');
-    
-    // 1. Save token -> uid
     await r.set('apitoken:' + token, uid);
-    
-    // 2. Save token in user's devkeys set (for fast listing)
     await r.sadd('devkeys:' + uid, token);
-    
     return res.json({ ok: true, token });
     
   } else if (active === 'list') {
-    // Get keys directly from the Set
     let userKeys = await r.smembers('devkeys:' + uid);
-    
-    // Fallback check if set is empty but old keys exist
     if (!userKeys || userKeys.length === 0) {
       const allKeys = await r.keys('apitoken:*');
       userKeys = [];
@@ -277,39 +266,30 @@ async function handleAdminApiToken(req, res, email, active) {
         if (await r.get(k) === uid) {
            const tk = k.replace('apitoken:', '');
            userKeys.push(tk);
-           await r.sadd('devkeys:' + uid, tk); // Repair: Add old keys to set
+           await r.sadd('devkeys:' + uid, tk); 
         }
       }
     }
-
     return res.json({ ok: true, keys: userKeys });
     
-    } else if (active === 'delete') {
-    // Dono jagah se token check karein (query parameter ya body)
+  } else if (active === 'delete') {
     const token = req.query.token || (req.body && req.body.token);
     if (!token) return res.status(400).json({ err: 'Token required' });
-    
-    // Check karein ke key exist karti hai ya nahi
     const ownerUid = await r.get('apitoken:' + token);
     
     if (ownerUid) {
       await r.del('apitoken:' + token);
       await r.srem('devkeys:' + ownerUid, token);
       
-      // Auto logout sessions linked to this API key
       const sessList = await r.smembers('us:' + ownerUid);
       for (const sid of sessList) {
          const s = await r.get('sess:' + sid);
          if (s && s.viaApi) { await r.del('sess:' + sid); await r.srem('us:' + ownerUid, sid); }
       }
-      
       return res.json({ ok: true, message: 'Key deleted & API sessions revoked.' });
     }
     return res.status(404).json({ err: 'Key not found' });
-
-    
   } else {
-    // Revoke all
     const userKeys = await r.smembers('devkeys:' + uid);
     for (const k of userKeys) { 
       await r.del('apitoken:' + k); 
@@ -325,16 +305,15 @@ async function handleAdminApiToken(req, res, email, active) {
 async function authDevApi(req, token) {
   if (!token || !token.startsWith('ms_dev_')) return null;
   const uid = await r.get('apitoken:' + token);
-  if (!uid) return null; // Key revoked or not found
+  if (!uid) return null; 
   const u = await r.get('user:' + uid);
   if (!u) return null;
   await r.set('seen:' + uid, now());
-  return { sid: 'dev_api', uid: String(uid), viaApi: true }; // Context match
+  return { sid: 'dev_api', uid: String(uid), viaApi: true }; 
 }
 
 const A = {};
 
-// Developer specific login routes (no token required initially, key is in URL)
 const devOpen = {
   async '/login-start'(req, b) {
     const email = String(b.email || '').trim().toLowerCase();
@@ -348,7 +327,7 @@ const devOpen = {
     const id0 = await r.get('email:' + email), id = id0 == null ? null : String(id0), u = id && (await r.get('user:' + id));
     if (!u || !(await checkCode(id, 'login', b.code))) return { err: 'Wrong or expired code' };
     if (u.sec && u.sec.two) return { need2fa: true, pend: await mkPend(id) };
-    return finish(u, req, true); // Pass true to mark session as viaApi
+    return finish(u, req, true); 
   },
   async '/login-2fa'(req, b) {
     const p = await r.get('pend:' + b.pend);
@@ -361,7 +340,7 @@ const devOpen = {
 };
 
 const open = {
-  async '/auth/register'(req, b) { /* original register code */ 
+  async '/auth/register'(req, b) { 
     const email = String(b.email || '').trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) return { err: 'Invalid email' };
     const name = String(b.name || '').trim().slice(0, 40);
@@ -699,7 +678,7 @@ async function upload(req, res, body) {
       body, request: req, token: blobToken(),
       onBeforeGenerateToken: async (pathname, payload) => {
         if (!payload || !(await r.get('sess:' + payload))) throw new Error('unauthorized');
-        return { maximumSizeInBytes: 70 * 1048576, addRandomSuffix: true };
+        return { maximumSizeInBytes: 5 * 1024 * 1024 * 1024, addRandomSuffix: true }; // 5GB limit
       },
       onUploadCompleted: async () => {}
     });
@@ -728,17 +707,13 @@ module.exports = async (req, res) => {
       const key = devMatch[1];
       const devPath = devMatch[2] || '/';
       
-      // Verify if the API key still exists in the DB
       const dc = await authDevApi(req, key);
       if (!dc) return res.status(401).json({ err: 'Key revoked or invalid. Please login again.' });
       
-      // Developer Specific Auth Routes (like Telegram login)
       if (devOpen[devPath]) return res.json(await devOpen[devPath](req, b));
       
-      // Block signup logic inside Dev API
       if (devPath.startsWith('/auth/register')) return res.status(403).json({ err: 'Registration is not allowed via Developer API.' });
       
-      // Route to standard endpoints using the dev session
       if (open[devPath]) return res.json(await open[devPath](req, b));
       if (!A[devPath]) return res.status(404).json({ err: 'not found' });
       return res.json(await A[devPath](dc, b, q, req));
