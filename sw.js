@@ -1,10 +1,22 @@
 /* MS Chat - sw.js
    Cache + notification display + notification actions (Reply / Mark as read / Mute) + deep link open + Share Target (Android). */
-const CACHE = 'ms-chat-v8'; // Version bump
+const CACHE = 'ms-chat-v9'; // Version change kiya
 const ORIGIN = 'https://ms-chat-messager.vercel.app';
 const ICON = ORIGIN + '/icon-512.png';
 const BADGE = ORIGIN + '/icon-192.png';
-const SHELL = ['/', '/index.html', '/manifest.json', '/notification.js', '/style.css', '/app.js', '/media.js', '/chats.js', '/icon-192.png', '/icon-512.png', '/api.html']; // api.html added
+const SHELL = [
+  '/', 
+  '/index.html', 
+  '/manifest.json', 
+  '/notification.js', 
+  '/style.css', 
+  '/app.js', 
+  '/media.js', 
+  '/chats.js', 
+  '/api.html',
+  '/icon-192.png', 
+  '/icon-512.png'
+]; // api.html added
 const EMOJI_HOST = 'magic-scripts-emojis.vercel.app';
 
 /* ---------- tiny IndexedDB key-value (stores auth token for notification actions) ---------- */
