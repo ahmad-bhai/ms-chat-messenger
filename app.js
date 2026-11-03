@@ -282,10 +282,10 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&S.cur&&!$('#dlg').innerHTML&
 if (new URLSearchParams(location.search).has('shared')) {
   history.replaceState(null, '', '/'); // URL clean karo
   
-  // Check karein jab tak user data load na ho jaye, wait karein
   const checkBoot = setInterval(async () => {
+    // Sirf S.me (login status) ka wait karein, chat list ka nahi
     if (S.me) {
-      clearInterval(checkBoot); // User load ho gaya, ab process karein
+      clearInterval(checkBoot);
       
       try {
         const db = await new Promise((res, rej) => {
@@ -298,47 +298,76 @@ if (new URLSearchParams(location.search).has('shared')) {
         const store = tx.objectStore('shared_files');
         const req = store.getAll();
         
-        req.onsuccess = async () => {
+        req.onsuccess = () => {
           const files = req.result;
           if (!files || files.length === 0) return;
 
-          // Kis chat mein bhejna hai wo poocho
-          const r = await dlg({
-            t: 'Send Shared Files',
-            p: `${files.length} file(s) received. Select a chat to send.`,
-            o: S.ch.map(c => nm(ct(c)))
+          // Custom Modal for Share Target
+          const d = $('#dlg');
+          const validChats = S.ch.filter(c => c && c.chat && c.peer);
+          
+          d.innerHTML = `<div class="ov"><div class="badge bx" style="max-height: 80vh; display: flex; flex-direction: column; padding: 0;">
+            <div style="padding: 18px; border-bottom: 1px solid var(--bd);">
+              <h3 style="margin-bottom: 4px;">Send Files</h3>
+              <p style="font-size: 13px; opacity: 0.7;">${files.length} file(s) received. Select a chat to send.</p>
+            </div>
+            <div style="overflow-y: auto; flex: 1; padding: 6px 0;" id="share-list">
+              ${validChats.length ? validChats.map((c, i) => `
+                <div class="row" data-share-i="${i}" style="padding: 12px 16px;">
+                  ${av(c.peer, 46, c.saved)}
+                  <div class="fx">
+                    <b class="sn">${nm(ct(c))}</b>
+                    <small class="sn" style="opacity:0.6">${c.saved ? 'Saved Messages' : '@' + esc(c.peer.username)}</small>
+                  </div>
+                </div>
+              `).join('') : '<p style="text-align:center;padding:20px;opacity:.6">No chats available</p>'}
+            </div>
+            <div class="bt" style="padding: 12px 18px; border-top: 1px solid var(--bd); margin: 0;">
+              <button id="share-cancel" style="color: #ff5b5b;">Cancel</button>
+            </div>
+          </div></div>`;
+
+          // Chat select karne par
+          d.querySelectorAll('[data-share-i]').forEach(el => {
+            el.onclick = async () => {
+              const chatIdx = +el.dataset.shareI;
+              const targetChat = validChats[chatIdx].chat;
+              d.innerHTML = '';
+              await processSharedFiles(files, targetChat, store);
+            };
           });
 
-          if (r.i < 0) {
+          // Cancel karne par
+          d.querySelector('#share-cancel').onclick = () => {
+            d.innerHTML = '';
             store.clear();
-            return;
-          }
-
-          const targetChat = S.ch[r.i].chat;
-
-          // Ek ek karke file upload aur send karein
-          for (const file of files) {
-            const f = new File([file.blob], file.name, { type: file.type });
-            const mediaObj = await up(f); // Upload function
-            if (mediaObj) {
-              await api('/send', { chat: targetChat, media: mediaObj, text: '' });
-            }
-          }
-
-          store.clear();
-          toast('Shared files sent successfully!');
-          
-          // Agar chat khuli hui hai to refresh karein
-          if (S.cur && S.cur.chat === targetChat) {
-            loadMs();
-          } else {
-            loadChats();
-          }
+            toast('Share cancelled');
+          };
         };
       } catch (err) {
         console.error('Share target error:', err);
         toast('Failed to process shared files');
       }
     }
-  }, 500); // Har 500ms baad check karega
+  }, 500);
+}
+
+// Function to upload and send shared files
+async function processSharedFiles(files, targetChat, store) {
+  toast('Sending files...');
+  for (const file of files) {
+    const f = new File([file.blob], file.name, { type: file.type });
+    const mediaObj = await up(f);
+    if (mediaObj) {
+      await api('/send', { chat: targetChat, media: mediaObj, text: '' });
+    }
+  }
+  store.clear();
+  toast('All files sent successfully!');
+  
+  if (S.cur && S.cur.chat === targetChat) {
+    loadMs();
+  } else {
+    loadChats();
+  }
 }
