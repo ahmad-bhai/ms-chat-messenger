@@ -1,8 +1,6 @@
 /* MS Chat - sw.js
-   Cache + notification display + notification actions (Reply / Mark as read / Mute) + deep link open.
-   NOTE: The page registers /firebase-messaging-sw.js, which importScripts() this file,
-   so both live in ONE service worker (no scope conflict). */
-const CACHE = 'ms-chat-v6';
+   Cache + notification display + notification actions (Reply / Mark as read / Mute) + deep link open + Share Target (Android). */
+const CACHE = 'ms-chat-v7'; // Version update kiya hai taake naya cache load ho
 const ORIGIN = 'https://ms-chat-messager.vercel.app';
 const ICON = ORIGIN + '/icon-512.png';
 const BADGE = ORIGIN + '/icon-192.png';
@@ -27,6 +25,16 @@ async function kvGet(k) {
   return new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); });
 }
 
+/* ---------- Share Target DB (Shared files ko save karne ke liye) ---------- */
+function shareDb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('MS_Chat_Share', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('shared_files', { autoIncrement: true });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+
 /* ---------- lifecycle ---------- */
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting()));
@@ -38,11 +46,19 @@ self.addEventListener('activate', e => {
   );
 });
 
-/* ---------- fetch ---------- */
+/* ---------- fetch & share target ---------- */
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // 1. Share Target API (Badi files aur multiple files handle karne ke liye)
+  if (url.pathname === '/share-target/' && req.method === 'POST') {
+    e.respondWith(handleShare(req));
+    return;
+  }
+
+  // 2. Baaki normal fetch requests
+  if (req.method !== 'GET') return;
 
   // Emoji images: cache-first (they never change)
   if (url.hostname === EMOJI_HOST) {
@@ -75,6 +91,37 @@ self.addEventListener('fetch', e => {
   }));
 });
 
+/* ---------- Share Handler Function ---------- */
+async function handleShare(request) {
+  try {
+    const formData = await request.formData();
+    const files = formData.getAll('media');
+    
+    if (files && files.length > 0) {
+      const db = await shareDb();
+      const tx = db.transaction('shared_files', 'readwrite');
+      const store = tx.objectStore('shared_files');
+
+      for (const file of files) {
+        // File save karein IndexedDB mein
+        store.add({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          blob: file,
+          time: Date.now()
+        });
+      }
+      await new Promise((resolve) => tx.oncomplete = resolve);
+    }
+  } catch (err) {
+    console.error('Share Target Error:', err);
+  }
+  
+  // File save hone ke baad app ko redirect karein
+  return Response.redirect('/?shared=true', 303);
+}
+
 /* ---------- messages from page ---------- */
 self.addEventListener('message', e => {
   const m = e.data || {};
@@ -94,7 +141,6 @@ self.showMsgNotification = function (d) {
     image: d.image || undefined,
     tag: 'chat-' + chatId,
     renotify: true,
-    silent: d.silent === '1',
     silent: d.silent === '1',
     vibrate: [120, 60, 120],
     timestamp: Number(d.ts) || Date.now(),
