@@ -698,7 +698,7 @@ module.exports = async (req, res) => {
       return res.json({ ok: true, db: !!(await r.ping().catch(() => 0)), blob: !!(blobToken() || process.env.BLOB_STORE_ID), blobEnv: blobEnvNames(), firebase: !!process.env.FIREBASE_SERVICE_ACCOUNT, emailjs: !!(process.env.EMAILJS_PUBLIC_KEY || process.env.EMAIL_JS_PUBLIC_KEY) });
     }
 
-    // Emoji Proxy Route (No no-store cache header here to allow caching)
+    // 1. Root Emoji Proxy (Direct /api/emoji?name=✅ ke liye)
     if (p === '/emoji' && q.name) {
       try {
         const emojiUrl = 'https://magic-scripts-emojis.vercel.app/emoji/?id=' + encodeURIComponent(q.name);
@@ -729,25 +729,47 @@ module.exports = async (req, res) => {
     if (devMatch) {
       const key = devMatch[1];
       const devPath = devMatch[2] || '/';
+
+      // 2. Developer API Emoji Proxy (API Key ke sath)
+      if (devPath === '/emoji' && q.name) {
+        try {
+          const emojiUrl = 'https://magic-scripts-emojis.vercel.app/emoji/?id=' + encodeURIComponent(q.name);
+          const emojiRes = await fetch(emojiUrl);
+          if (!emojiRes.ok) return res.status(emojiRes.status).send('Emoji not found');
+          
+          res.setHeader('Content-Type', emojiRes.headers.get('content-type') || 'image/png');
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          
+          const buffer = await emojiRes.arrayBuffer();
+          return res.send(Buffer.from(buffer));
+        } catch (e) {
+          return res.status(500).send('Error loading emoji');
+        }
+      }
       
+      // 3. Ab baaki routes ke liye API Key verify karein
       const dc = await authDevApi(req, key);
       if (!dc) return res.status(401).json({ err: 'Key revoked or invalid. Please login again.' });
       
+      // 4. Developer Specific Auth Routes
       if (devOpen[devPath]) return res.json(await devOpen[devPath](req, b));
       
+      // 5. Block signup logic inside Dev API
       if (devPath.startsWith('/auth/register')) return res.status(403).json({ err: 'Registration is not allowed via Developer API.' });
       
+      // 6. Route to standard endpoints
       if (open[devPath]) return res.json(await open[devPath](req, b));
       if (!A[devPath]) return res.status(404).json({ err: 'not found' });
       return res.json(await A[devPath](dc, b, q, req));
     }
 
-    // Normal MS Chat App Routes
+    // 7. Normal MS Chat App Routes
     if (open[p]) return res.json(await open[p](req, b));
     const c = await auth(req);
     if (!c) return res.status(401).json({ err: 'unauthorized' });
     if (!A[p]) return res.status(404).json({ err: 'not found' });
     return res.json(await A[p](c, b, q, req));
+    
   } catch (e) {
     console.error(p, e);
     return res.status(500).json({ err: 'Server error' });
