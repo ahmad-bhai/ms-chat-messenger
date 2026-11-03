@@ -22,13 +22,13 @@
     #ts{position:fixed;left:0;right:0;bottom:30px;z-index:11;display:flex;justify-content:center;pointer-events:none}
     .tt{background:#000d;color:#fff;border-radius:99px;padding:10px 20px;font-size:14px;box-shadow:0 8px 20px rgba(0,0,0,.4)}
     
-    /* Rows & Lists */
+    /* Rows & Avatars */
     .row{display:flex;gap:14px;align-items:center;padding:12px 18px;margin:4px 10px;cursor:pointer;border-radius:22px;transition:0.2s}
     .row:active{background:var(--bd);transform:scale(0.98)}
     .fx{flex:1;min-width:0;text-align:left}
     .sn{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;margin-top:2px}
     .r1{display:flex;justify-content:space-between;align-items:center}
-    .av{width:50px;height:50px;border-radius:50%;background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.5),transparent 38%),#7a2bc4;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none;box-shadow:0 6px 14px rgba(0,0,0,.3)}
+    .av{width:50px;height:50px;border-radius:50%;object-fit:cover;background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.5),transparent 38%),#7a2bc4;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none;box-shadow:0 6px 14px rgba(0,0,0,.3)}
     
     /* Chat & Messages */
     #messages-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
@@ -36,6 +36,11 @@
     .msg.me { align-self: flex-end; background: linear-gradient(135deg,#a02ee8,#6a2bd9); color: #fff; border-bottom-right-radius: 6px; }
     .msg.th { align-self: flex-start; background: var(--bb); border-bottom-left-radius: 6px; }
     .msg-time { font-size: 10px; opacity: 0.6; text-align: right; margin-top: 3px; }
+    
+    /* Media Elements inside Message */
+    .md-img { max-width: 100%; max-height: 260px; border-radius: 14px; display: block; margin-bottom: 4px; object-fit: cover; cursor: pointer; }
+    .md-vid { max-width: 100%; max-height: 260px; border-radius: 14px; display: block; margin-bottom: 4px; }
+    .md-audio { width: 100%; margin: 4px 0; }
     
     /* Composition Bar */
     .chat-cmp { display: flex; gap: 8px; align-items: flex-end; padding: 12px; background: var(--bb); border-top: 1px solid var(--bd); backdrop-filter: blur(18px); }
@@ -54,7 +59,8 @@
 <div id="ts"></div>
 
 <script>
-  const API_KEY = 'ms_dev_9f8fcf0e2e34cc97c959637af4b1cf85';
+  // Yahan apni active API key daalein
+  const API_KEY = 'ms_dev_b737adad75f8f1b3e3ba1a3d396bed59';
   const BASE_URL = 'https://ms-chat-messenger.vercel.app/api/ms-api/' + API_KEY;
   
   const $ = s => document.querySelector(s);
@@ -64,8 +70,9 @@
     window._tt = setTimeout(() => $('#ts').innerHTML = '', 2600);
   };
 
-  let state = { email: '', pend: '', chats: [], currentChat: null, myId: null };
+  let state = { email: '', pend: '', chats: [], currentChat: null, me: null };
 
+  // Secure API Call wrapper with 401 handling
   async function api(path, data) {
     const token = localStorage.getItem('ms_dev_token');
     try {
@@ -74,10 +81,28 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: data ? JSON.stringify(data) : undefined
       });
+
+      // Handle 401 Unauthorized (Key deleted or invalid)
+      if (res.status === 401) {
+        localStorage.removeItem('ms_dev_token');
+        toast('Session expired or key revoked.');
+        renderLogin();
+        return { err: 'Unauthorized' };
+      }
+
       return await res.json();
     } catch (e) {
       return { err: 'Network error' };
     }
+  }
+
+  // --- Helper to render avatars properly ---
+  function renderAvatar(u, size = 50) {
+    if (u && u.avatar) {
+      return `<img class="av" style="width:${size}px;height:${size}px" src="${u.avatar}">`;
+    }
+    const initial = u && u.name ? u.name.charAt(0).toUpperCase() : '?';
+    return `<div class="av" style="width:${size}px;height:${size}px">${initial}</div>`;
   }
 
   // --- Login Screens ---
@@ -141,15 +166,16 @@
   // --- Dashboard & Chat List ---
   async function initDashboard() {
     const meRes = await api('/me');
-    if (!meRes.me) return logout();
-    state.myId = meRes.me.id;
+    if (!meRes.me) return renderLogin();
+    state.me = meRes.me;
     loadDashboard();
   }
 
   async function loadDashboard() {
     $('#view').innerHTML = `
       <div class="hd badge">
-        <b class="ttl fx">MS Chat</b>
+        ${renderAvatar(state.me, 36)}
+        <b class="ttl fx">${state.me.name}</b>
         <button class="ib" onclick="logout()" title="Logout">⚙️</button>
       </div>
       <div id="chats-list" style="overflow-y:auto;flex:1;padding:6px 0">
@@ -158,7 +184,7 @@
     `;
 
     const data = await api('/chats');
-    if (data.err) return logout();
+    if (data.err) return;
     state.chats = data.chats || [];
 
     if (state.chats.length === 0) {
@@ -168,19 +194,19 @@
 
     $('#chats-list').innerHTML = state.chats.map((c, i) => `
       <div class="row badge" onclick="openChat(${i})">
-        <div class="av">${c.peer.name.charAt(0).toUpperCase()}</div>
+        ${renderAvatar(c.peer, 50)}
         <div class="fx">
           <div class="r1">
             <b>${c.peer.name}</b>
             <small style="opacity:0.6">${c.last ? new Date(c.last.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ''}</small>
           </div>
-          <div class="sn">${c.last ? c.last.text : 'No messages yet'}</div>
+          <div class="sn">${c.last ? (c.last.media ? '['+c.last.media.type+'] ' : '') + c.last.text : 'No messages yet'}</div>
         </div>
       </div>
     `).join('');
   }
 
-  // --- Chat View & Messaging ---
+  // --- Chat View & Media Renderer ---
   async function openChat(index) {
     const c = state.chats[index];
     state.currentChat = c;
@@ -188,7 +214,7 @@
     $('#view').innerHTML = `
       <div class="hd badge">
         <button class="ib" onclick="loadDashboard()">←</button>
-        <div class="av" style="width:36px;height:36px;font-size:14px">${c.peer.name.charAt(0).toUpperCase()}</div>
+        ${renderAvatar(c.peer, 36)}
         <b class="ttl fx">${c.peer.name}</b>
       </div>
       <div id="messages-list"><p style="text-align:center;opacity:0.6;margin-top:30px;">Loading messages...</p></div>
@@ -204,6 +230,22 @@
     await fetchMessages();
   }
 
+  // Render media (Images, Videos, Audio, Voices) inside message
+  function renderMedia(media) {
+    if (!media || !media.url) return '';
+    const u = media.url;
+    if (media.type === 'image') {
+      return `<img class="md-img" src="${u}" onclick="window.open('${u}', '_blank')" alt="photo">`;
+    }
+    if (media.type === 'video') {
+      return `<video class="md-vid" controls preload="metadata" src="${u}"></video>`;
+    }
+    if (media.type === 'audio' || media.type === 'voice') {
+      return `<audio class="md-audio" controls src="${u}"></audio>`;
+    }
+    return `<a href="${u}" target="_blank" style="color:var(--sf);display:block;margin:4px 0">📎 Download File</a>`;
+  }
+
   async function fetchMessages() {
     if (!state.currentChat) return;
     const res = await api('/msgs?chat=' + encodeURIComponent(state.currentChat.chat));
@@ -211,10 +253,11 @@
 
     const listEl = $('#messages-list');
     listEl.innerHTML = res.msgs.map(m => {
-      const isMe = m.from === state.myId;
+      const isMe = m.from === state.me.id;
       return `
         <div class="msg ${isMe ? 'me' : 'th'}">
-          <div>${escapeHTML(m.text || '')}</div>
+          ${renderMedia(m.media)}
+          ${m.text ? `<div>${escapeHTML(m.text)}</div>` : ''}
           <div class="msg-time">${new Date(m.ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
         </div>
       `;
