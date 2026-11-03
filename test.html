@@ -12,7 +12,7 @@
     [hidden]{display:none!important}
     .scr{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);z-index:5}
     .badge{background:var(--bb);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid var(--bd);border-radius:22px}
-    .hd{display:flex;align-items:center;gap:8px;padding:12px 16px;min-height:56px}
+    .hd{display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:56px}
     .ttl{font-size:18px;font-weight:700}
     .inp{width:100%;background:var(--bb);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;color:inherit;font:inherit;outline:0;margin:8px 0}
     .btn{width:100%;border:0;border-radius:99px;padding:14px;color:#fff;background:var(--ac);font-weight:700;font-size:16px;font-family:inherit;cursor:pointer;margin-top:12px}
@@ -26,12 +26,21 @@
     .fx{flex:1;min-width:0;text-align:left}
     .sn{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .av{width:46px;height:46px;border-radius:50%;background:#7a2bc4;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none}
+    
+    /* Chat & Messages styling */
+    #messages-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .msg { max-width: 75%; padding: 8px 12px; border-radius: 16px; font-size: 14px; word-break: break-word; }
+    .msg.me { align-self: flex-end; background: var(--me); border-bottom-right-radius: 4px; }
+    .msg.th { align-self: flex-start; background: var(--bb); border-bottom-left-radius: 4px; border: 1px solid var(--bd); }
+    .msg-time { font-size: 10px; opacity: 0.6; text-align: right; margin-top: 2px; }
+    .chat-cmp { display: flex; gap: 8px; align-items: flex-end; padding: 10px; background: var(--bb); border-top: 1px solid var(--bd); }
+    .chat-cmp textarea { flex: 1; max-height: 100px; resize: none; border-radius: 20px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--bd); color: inherit; font: inherit; outline: 0; }
+    .ib { background: none; border: 0; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 12px; }
   </style>
 </head>
 <body>
 
 <div class="scr" id="app">
-  <!-- Dynamic Screen Content Area -->
   <div id="view" style="flex:1;display:flex;flex-direction:column;overflow:hidden"></div>
 </div>
 
@@ -48,14 +57,14 @@
     window._tt = setTimeout(() => $('#ts').innerHTML = '', 2600);
   };
 
-  // App State
-  let state = { email: '', pend: '', chats: [] };
+  let state = { email: '', pend: '', chats: [], currentChat: null, myId: null };
 
   async function api(path, data) {
+    const token = localStorage.getItem('ms_dev_token');
     try {
       const res = await fetch(BASE_URL + path, {
         method: data ? 'POST' : 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: data ? JSON.stringify(data) : undefined
       });
       return await res.json();
@@ -64,8 +73,7 @@
     }
   }
 
-  // --- Screens ---
-
+  // --- Login Screens ---
   function renderLogin() {
     $('#view').innerHTML = `
       <div class="au">
@@ -78,12 +86,10 @@
     $('#btn-next').onclick = async () => {
       const email = $('#email-inp').value.trim();
       if (!email) return toast('Please enter email');
-      
       const res = await api('/login-start', { email });
       if (res.err) return toast(res.err);
-      
       state.email = email;
-      toast(res.via === 'chat' ? 'Code sent to your MS Chat app!' : 'Code sent to your email!');
+      toast('Code sent successfully!');
       renderOTP();
     };
   }
@@ -92,7 +98,7 @@
     $('#view').innerHTML = `
       <div class="au">
         <h1>Enter Code</h1>
-        <p class="hint">Enter the 6-digit code sent for <b>${state.email}</b></p>
+        <p class="hint">Enter 6-digit code sent to <b>${state.email}</b></p>
         <input type="tel" id="code-inp" class="inp" placeholder="123456" maxlength="6" style="text-align:center;letter-spacing:4px;font-size:20px">
         <button class="btn" id="btn-verify">Verify Code</button>
       </div>
@@ -100,18 +106,10 @@
     $('#btn-verify').onclick = async () => {
       const code = $('#code-inp').value.trim();
       if (!code) return toast('Please enter code');
-
       const res = await api('/login-verify', { email: state.email, code });
       if (res.err) return toast(res.err);
-
-      if (res.need2fa) {
-        state.pend = res.pend;
-        render2FA();
-      } else if (res.token) {
-        // Successfully logged in! Save token and load chats
-        localStorage.setItem('ms_dev_token', res.token);
-        loadDashboard();
-      }
+      if (res.need2fa) { state.pend = res.pend; render2FA(); }
+      else if (res.token) { localStorage.setItem('ms_dev_token', res.token); initDashboard(); }
     };
   }
 
@@ -119,7 +117,6 @@
     $('#view').innerHTML = `
       <div class="au">
         <h1>Two-Step Password</h1>
-        <p class="hint">Your account is protected with a 2FA password</p>
         <input type="password" id="two-inp" class="inp" placeholder="Password">
         <button class="btn" id="btn-2fa">Login</button>
       </div>
@@ -127,62 +124,109 @@
     $('#btn-2fa').onclick = async () => {
       const two = $('#two-inp').value;
       if (!two) return toast('Enter password');
-
       const res = await api('/login-2fa', { pend: state.pend, two });
       if (res.err) return toast(res.err);
-
-      if (res.token) {
-        localStorage.setItem('ms_dev_token', res.token);
-        loadDashboard();
-      }
+      if (res.token) { localStorage.setItem('ms_dev_token', res.token); initDashboard(); }
     };
   }
 
+  // --- Dashboard & Chat List ---
+  async function initDashboard() {
+    const meRes = await api('/me');
+    if (!meRes.me) return logout();
+    state.myId = meRes.me.id;
+    loadDashboard();
+  }
+
   async function loadDashboard() {
-    // Custom fetch wrapper with Authorization Bearer token for protected routes
-    const token = localStorage.getItem('ms_dev_token');
-    
     $('#view').innerHTML = `
       <div class="hd badge" style="border-radius:0">
-        <b class="ttl fx">Your Chats</b>
-        <button class="btn" style="width:auto;margin:0;padding:6px 14px;font-size:13px" onclick="logout()">Logout</button>
+        <b class="ttl fx">Chats</b>
+        <button class="ib" onclick="logout()" title="Logout">🚪</button>
       </div>
       <div id="chats-list" style="overflow-y:auto;flex:1">
         <p style="text-align:center;opacity:0.6;padding:30px">Loading chats...</p>
       </div>
     `;
 
-    try {
-      const res = await fetch(BASE_URL + '/chats', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      const data = await res.json();
-      
-      if (data.err) {
-        if (data.err === 'unauthorized') return logout();
-        throw new Error(data.err);
-      }
+    const data = await api('/chats');
+    if (data.err) return logout();
+    state.chats = data.chats || [];
 
-      state.chats = data.chats || [];
-      
-      if (state.chats.length === 0) {
-        $('#chats-list').innerHTML = '<p style="text-align:center;opacity:0.6;padding:30px">No chats found.</p>';
-        return;
-      }
-
-      $('#chats-list').innerHTML = state.chats.map(c => `
-        <div class="row">
-          <div class="av">${c.peer.name.charAt(0).toUpperCase()}</div>
-          <div class="fx">
-            <b>${c.peer.name}</b>
-            <div class="sn">${c.last ? c.last.text : 'No messages yet'}</div>
-          </div>
-        </div>
-      `).join('');
-
-    } catch (e) {
-      $('#chats-list').innerHTML = `<p style="text-align:center;color:#ff5b5b;padding:30px">Failed to load chats</p>`;
+    if (state.chats.length === 0) {
+      $('#chats-list').innerHTML = '<p style="text-align:center;opacity:0.6;padding:30px">No chats found.</p>';
+      return;
     }
+
+    $('#chats-list').innerHTML = state.chats.map((c, i) => `
+      <div class="row" onclick="openChat(${i})">
+        <div class="av">${c.peer.name.charAt(0).toUpperCase()}</div>
+        <div class="fx">
+          <b>${c.peer.name}</b>
+          <div class="sn">${c.last ? c.last.text : 'No messages yet'}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // --- Chat View & Messaging ---
+  async function openChat(index) {
+    const c = state.chats[index];
+    state.currentChat = c;
+
+    $('#view').innerHTML = `
+      <div class="hd badge" style="border-radius:0">
+        <button class="ib" onclick="loadDashboard()">⬅</button>
+        <b class="ttl fx">${c.peer.name}</b>
+      </div>
+      <div id="messages-list"><p style="text-align:center;opacity:0.6;margin-top:20px;">Loading messages...</p></div>
+      <div class="chat-cmp">
+        <textarea id="msg-input" rows="1" placeholder="Type a message..."></textarea>
+        <button class="btn" id="btn-send" style="width:auto;margin:0;padding:10px 16px;border-radius:16px;">Send</button>
+      </div>
+    `;
+
+    $('#btn-send').onclick = sendMessage;
+    $('#msg-input').onkeydown = e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+
+    await fetchMessages();
+  }
+
+  async function fetchMessages() {
+    if (!state.currentChat) return;
+    const res = await api('/msgs?chat=' + encodeURIComponent(state.currentChat.chat));
+    if (!res.msgs) return;
+
+    const listEl = $('#messages-list');
+    listEl.innerHTML = res.msgs.map(m => {
+      const isMe = m.from === state.myId;
+      return `
+        <div class="msg ${isMe ? 'me' : 'th'}">
+          <div>${escapeHTML(m.text || '')}</div>
+          <div class="msg-time">${new Date(m.ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+        </div>
+      `;
+    }).join('') || '<p style="text-align:center;opacity:0.5">No messages yet</p>';
+
+    listEl.scrollTop = listEl.scrollHeight;
+  }
+
+  async function sendMessage() {
+    const input = $('#msg-input');
+    const text = input.value.trim();
+    if (!text || !state.currentChat) return;
+
+    input.value = '';
+    const res = await api('/send', { chat: state.currentChat.chat, text });
+    if (res.err) {
+      toast(res.err);
+      return;
+    }
+    await fetchMessages();
+  }
+
+  function escapeHTML(str) {
+    return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
   }
 
   window.logout = () => {
@@ -190,10 +234,9 @@
     renderLogin();
   };
 
-  // Initial Boot Check
   window.onload = () => {
     if (localStorage.getItem('ms_dev_token')) {
-      loadDashboard();
+      initDashboard();
     } else {
       renderLogin();
     }
