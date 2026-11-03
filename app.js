@@ -168,7 +168,7 @@ const n=40,mx=Math.max(...wv,1),wave=Array.from({length:n},(_,i)=>{const a0=Math
 qFile(new File(chunks,'voice.'+(mt.includes('mp4')?'m4a':'webm'),{type:mt}),'','voice',{dur:Math.round(dur),wave})};rec.start()};
 Act.rcsend=()=>{if(rec){rec.send=1;rec.stop()}};Act.rccancel=()=>{if(rec){rec.send=0;rec.stop()}};
 const gdur=f=>new Promise(r=>{const a=new Audio(URL.createObjectURL(f)),t=setTimeout(()=>r(0),1500);a.onloadedmetadata=()=>{clearTimeout(t);r(isFinite(a.duration)?Math.round(a.duration):0)};a.onerror=()=>r(0)});
-async function qFile(f,cap,type,ex){const ty=type||(f.type.startsWith('image')?'image':f.type.startsWith('video')?'video':f.type.startsWith('audio')?'audio':'file');if(f.size>2*1024**3)return toast('Max file size is 2 GB');const x={...(ex||{})};if(ty==='audio'&&!x.dur)x.dur=await gdur(f);
+async function qFile(f,cap,type,ex){const ty=type||(f.type.startsWith('image')?'image':f.type.startsWith('video')?'video':f.type.startsWith('audio')?'audio':'file');if(f.size>5*1024**3)return toast('Max file size is 5 GB');const x={...(ex||{})};if(ty==='audio'&&!x.dur)x.dur=await gdur(f);
 const rp=S.rep&&{id:S.rep.id,name:S.rep.from===S.me.id?S.me.name:S.cur.peer.name,text:S.rep.text||'['+(S.rep.media&&S.rep.media.type)+']'};S.rep=null;bar();
 const m={id:8e15+(++obn),pend:1,up:0,chat:cid(),from:S.me.id,text:cap||'',ts:Date.now(),file:f,media:{url:URL.createObjectURL(f),name:f.name,size:f.size,type:ty,local:1,...x},reply:rp||null,react:{},del:[],pin:[]};S.ms.push(m);OB.push(m);S.sb=1;drawMs();S.sb=0;flush()}
 const AP={a:new Audio(),id:null,on:0};
@@ -181,7 +181,7 @@ const app=A.getApps().find(a=>a.name==='ms')||A.initializeApp({apiKey:'AIzaSyD7N
 const t=await api('/fb/token',{});if(!t.token)throw new Error(t.err||'No Firebase token');await Au.signInWithCustomToken(Au.getAuth(app),t.token);FB={uid:S.me.id,st:St.getStorage(app),St};return FB}
 function fbUp(f,onp){return fbInit().then(x=>new Promise((res,rej)=>{const S2=x.St,r=S2.ref(x.st,`u/${S.me.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g,'_')}`),t=S2.uploadBytesResumable(r,f,{contentType:f.type||'application/octet-stream'});t.on('state_changed',z=>onp&&onp(Math.round(z.bytesTransferred/z.totalBytes*100)),rej,async()=>res(await S2.getDownloadURL(t.snapshot.ref)))}))}
 async function upload2(f,onp){let err;try{return await fbUp(f,onp)}catch(e){err=e}if(f.size<4e6){try{const r=await fetch('/api/put?name='+E(f.name)+'&type='+E(f.type||'application/octet-stream'),{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:'Bearer '+S.ac[S.ai].token},body:f});const j=await r.json();if(j.url)return j.url}catch(e){}}throw err}
-async function up(f,type){if(f.size>2*1024**3){toast('Max file size is 2 GB');return null}toast('Uploading…');try{const url=await upload2(f,p=>toast('Uploading '+p+'%'));return{url,name:f.name,size:f.size,type:type||(f.type.startsWith('image')?'image':f.type.startsWith('video')?'video':f.type.startsWith('audio')?'audio':'file')}}catch(e){toast(esc('Upload failed: '+(e.code||e.message)));return null}}
+async function up(f,type){if(f.size>5*1024**3){toast('Max file size is 5 GB');return null}toast('Uploading…');try{const url=await upload2(f,p=>toast('Uploading '+p+'%'));return{url,name:f.name,size:f.size,type:type||(f.type.startsWith('image')?'image':f.type.startsWith('video')?'video':f.type.startsWith('audio')?'audio':'file')}}catch(e){toast(esc('Upload failed: '+(e.code||e.message)));return null}}
 const fl=$('#fl');
 const isMed=f=>/^(image|video)\//.test(f.type);
 fl.onchange=async()=>{const fs=[...fl.files];fl.value='';fl.multiple=false;if(!fs.length)return;const w=S.fm;S.fm=0;const f=fs[0];
@@ -275,3 +275,71 @@ setInterval(()=>poll().catch(()=>{}),2500);
 boot();
 
 addEventListener('keydown',e=>{if(e.key==='Escape'&&S.cur&&!$('#dlg').innerHTML&&$('#sh').hidden)Act.back()});
+
+/* =========================================================
+   SHARE TARGET (File manager se share aayi files handle karna)
+   ========================================================= */
+if (new URLSearchParams(location.search).has('shared')) {
+  history.replaceState(null, '', '/'); // URL clean karo
+
+  (async () => {
+    try {
+      const db = await new Promise((res, rej) => {
+        const req = indexedDB.open('MS_Chat_Share', 1);
+        req.onsuccess = (e) => res(e.target.result);
+        req.onerror = (e) => rej(e.target.error);
+      });
+
+      const tx = db.transaction('shared_files', 'readwrite');
+      const store = tx.objectStore('shared_files');
+      const req = store.getAll();
+      
+      req.onsuccess = async () => {
+        const files = req.result;
+        if (!files || files.length === 0) return;
+
+        // Agar user logged in nahi hai, to login screen par bhej dein
+        if (!S.me) {
+          toast('Please login to share files');
+          return;
+        }
+
+        // Kis chat mein bhejna hai wo poocho
+        const r = await dlg({
+          t: 'Send Shared Files',
+          p: `${files.length} file(s) received. Select a chat to send.`,
+          o: S.ch.map(c => nm(ct(c)))
+        });
+
+        if (r.i < 0) {
+          store.clear();
+          return;
+        }
+
+        const targetChat = S.ch[r.i].chat;
+
+        // Ek ek karke file upload aur send karein
+        for (const file of files) {
+          const f = new File([file.blob], file.name, { type: file.type });
+          const mediaObj = await up(f); // Upload function
+          if (mediaObj) {
+            await api('/send', { chat: targetChat, media: mediaObj, text: '' });
+          }
+        }
+
+        store.clear();
+        toast('Shared files sent successfully!');
+        
+        // Agar chat khuli hui hai to refresh karein
+        if (S.cur && S.cur.chat === targetChat) {
+          loadMs();
+        } else {
+          loadChats();
+        }
+      };
+    } catch (err) {
+      console.error('Share target error:', err);
+      toast('Failed to process shared files');
+    }
+  })();
+}
