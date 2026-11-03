@@ -310,8 +310,8 @@ if (new URLSearchParams(location.search).has('shared')) {
   history.replaceState(null, '', '/'); // URL clean karo
   
   const checkBoot = setInterval(async () => {
-    // Sirf S.me (login status) ka wait karein, chat list ka nahi
-    if (S.me) {
+    // Jab tak S.me aur S.ch (chats) dono load na ho jayein, wait karein
+    if (S.me && S.ch && S.ch.length >= 0) {
       clearInterval(checkBoot);
       
       try {
@@ -354,7 +354,6 @@ if (new URLSearchParams(location.search).has('shared')) {
             </div>
           </div></div>`;
 
-          // Chat select karne par
           d.querySelectorAll('[data-share-i]').forEach(el => {
             el.onclick = async () => {
               const chatIdx = +el.dataset.shareI;
@@ -364,7 +363,6 @@ if (new URLSearchParams(location.search).has('shared')) {
             };
           });
 
-          // Cancel karne par
           d.querySelector('#share-cancel').onclick = () => {
             d.innerHTML = '';
             store.clear();
@@ -373,28 +371,45 @@ if (new URLSearchParams(location.search).has('shared')) {
         };
       } catch (err) {
         console.error('Share target error:', err);
-        toast('Failed to process shared files');
       }
     }
   }, 500);
 }
 
-// Function to upload and send shared files
+// File Upload & Send Function (From Share Menu)
 async function processSharedFiles(files, targetChat, store) {
   toast('Sending files...');
   for (const file of files) {
     const f = new File([file.blob], file.name, { type: file.type });
-    const mediaObj = await up(f);
-    if (mediaObj) {
+    
+    // Direct Vercel Blob Upload with Progress
+    let url;
+    try {
+      const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
+      const newBlob = await upload(f.name, f, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+        clientPayload: S.ac[S.ai].token
+      });
+      url = newBlob.url;
+    } catch (e) {
+      toast('Upload failed: ' + e.message);
+      continue;
+    }
+
+    if (url) {
+      const mediaObj = { 
+        url, 
+        name: f.name, 
+        size: f.size, 
+        type: f.type.startsWith('image') ? 'image' : f.type.startsWith('video') ? 'video' : f.type.startsWith('audio') ? 'audio' : 'file' 
+      };
       await api('/send', { chat: targetChat, media: mediaObj, text: '' });
     }
   }
   store.clear();
   toast('All files sent successfully!');
   
-  if (S.cur && S.cur.chat === targetChat) {
-    loadMs();
-  } else {
-    loadChats();
-  }
+  if (S.cur && S.cur.chat === targetChat) loadMs();
+  else loadChats();
 }
