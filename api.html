@@ -7,9 +7,9 @@
   <link rel="stylesheet" href="https://ms-chat-messenger.vercel.app/style.css">
   <style>
     .dev-card { padding: 16px; margin-bottom: 12px; }
-    .key-val { font-family: ui-monospace, Menlo, monospace; background: var(--bd); padding: 6px 10px; border-radius: 10px; font-size: 13px; word-break: break-all; display: block; margin: 8px 0; }
+    .key-val { font-family: ui-monospace, Menlo, monospace; background: var(--bd); padding: 8px 10px; border-radius: 10px; font-size: 13px; word-break: break-all; display: block; margin: 8px 0; }
     .code-box { background: #0f0b15; border: 1px solid var(--bd); border-radius: 12px; padding: 12px; overflow-x: auto; font-family: ui-monospace, Menlo, monospace; font-size: 13px; margin-top: 10px; color: #e2e8f0; }
-    .code-box pre { margin: 0; }
+    .code-box pre { margin: 0; white-space: pre-wrap; }
     .tabs { display: flex; gap: 6px; margin-bottom: 8px; overflow-x: auto; scrollbar-width: none; }
     .tabs button { background: var(--bb); border: 1px solid var(--bd); color: var(--tx); padding: 6px 12px; border-radius: 99px; font-size: 13px; cursor: pointer; flex: none; transition: 0.2s; }
     .tabs button.on { background: var(--ac); border-color: transparent; font-weight: bold; color: #fff; }
@@ -18,11 +18,18 @@
     .copy-btn .i { width: 16px; height: 16px; fill: currentColor; }
     .del-btn { background: rgba(255, 59, 48, 0.15); color: #ff5b5b; border: 1px solid rgba(255, 59, 48, 0.3); padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px;}
     .del-btn:active { transform: scale(0.95); }
+    
+    /* User Profile Header */
+    .user-badge { display: flex; align-items: center; justify-content: space-between; background: var(--bb); padding: 10px 14px; border-radius: 12px; margin-bottom: 16px; border: 1px solid var(--bd); }
+    .user-badge b { font-size: 14px; word-break: break-all; }
+    .logout-btn { background: none; border: 1px solid #ff5b5b; color: #ff5b5b; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    .logout-btn:active { background: rgba(255, 59, 48, 0.2); }
   </style>
 </head>
 <body>
 
 <div class="scr" id="app">
+  <!-- Header -->
   <div class="hd badge">
     <a href="/" class="ib" style="text-decoration:none;color:inherit">
       <svg class="i" viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
@@ -36,7 +43,7 @@
     <div id="step-email" class="badge dev-card">
       <h3 style="margin-bottom: 8px;">Verify Email</h3>
       <p style="font-size: 13px; opacity: 0.8; margin-bottom: 12px;">Enter your MS Chat account email to receive an OTP directly in your inbox.</p>
-      <input type="email" id="email" class="inp" placeholder="you@example.com">
+      <input type="email" id="email" class="inp" placeholder="you@example.com" autocomplete="email">
       <button class="btn" id="btn-send-otp">Send OTP via Email</button>
     </div>
 
@@ -44,12 +51,22 @@
     <div id="step-otp" class="badge dev-card" hidden>
       <h3 style="margin-bottom: 8px;">Enter OTP</h3>
       <p style="font-size: 13px; opacity: 0.8; margin-bottom: 12px;">Enter the 6-digit verification code sent to <b id="display-email"></b>.</p>
-      <input type="tel" id="otp" class="inp" placeholder="123456" maxlength="6" style="text-align: center; letter-spacing: 4px; font-size: 20px;">
+      <input type="tel" id="otp" class="inp" placeholder="123456" maxlength="6" style="text-align: center; letter-spacing: 4px; font-size: 20px;" autocomplete="one-time-code">
       <button class="btn" id="btn-verify-otp">Verify & Continue</button>
     </div>
 
     <!-- Step 3: API Dashboard -->
     <div id="step-dashboard" hidden>
+      
+      <!-- User Info Bar -->
+      <div class="user-badge">
+        <div>
+          <span style="font-size: 12px; opacity: 0.7; display: block; margin-bottom: 2px;">Logged in as</span>
+          <b id="user-email-display"></b>
+        </div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+      </div>
+
       <div class="badge dev-card" style="display: flex; justify-content: space-between; align-items: center;">
         <div>
           <b style="font-size: 16px;">Active API Keys</b>
@@ -87,7 +104,7 @@
 <script>
   const $ = s => document.querySelector(s);
   
-  // LocalStorage se session load karein (Refresh par logout na ho)
+  // Load session from LocalStorage
   let currentEmail = localStorage.getItem('ms_api_email') || '';
   let currentKey = localStorage.getItem('ms_api_key') || '';
   let userKeys = [];
@@ -108,27 +125,28 @@
     }
   };
 
-  // Logout function
+  // Global Logout Function
   window.logout = () => {
     localStorage.removeItem('ms_api_email');
     localStorage.removeItem('ms_api_key');
     currentEmail = '';
     currentKey = '';
-    location.reload();
+    location.reload(); // Refresh to show login screen
   };
 
-  // Page load hote hi check karein agar pehle se logged in hain
+  // Check on page load if already logged in
   window.onload = () => {
     if (currentEmail && currentKey) {
       $('#step-email').hidden = true;
       $('#step-otp').hidden = true;
       $('#step-dashboard').hidden = false;
+      $('#user-email-display').textContent = currentEmail;
       $('#base-url').textContent = location.origin + '/api/ms-api/{token}/...';
       loadKeys();
     }
   };
 
-  // Step 1: Send OTP via Email
+  // Step 1: Send OTP
   $('#btn-send-otp').onclick = async () => {
     const email = $('#email').value.trim();
     if (!email) return toast('Please enter email');
@@ -181,8 +199,11 @@
       
       if (data.err) throw new Error(data.err);
       
-      // Show dashboard & save session
-      localStorage.setItem('ms_api_key', 'true'); // Save session
+      // Show dashboard & save session token
+      localStorage.setItem('ms_api_key', 'true'); 
+      currentKey = 'true';
+      
+      $('#user-email-display').textContent = currentEmail;
       $('#step-otp').hidden = true;
       $('#step-dashboard').hidden = false;
       $('#base-url').textContent = location.origin + '/api/ms-api/{token}/...';
@@ -215,21 +236,8 @@
       
       if (userKeys.length === 0) {
         list.innerHTML = '<p style="text-align:center;opacity:0.6;padding:20px;">No API keys generated yet.</p>';
+        $('#code-display').innerHTML = 'Generate an API key to view integration code.';
         return;
-      }
-
-      // Add Logout button on top if not there
-      if (!$('#btn-logout')) {
-        const header = document.querySelector('#step-dashboard > div');
-        if (header) {
-          const lBtn = document.createElement('button');
-          lBtn.id = 'btn-logout';
-          lBtn.className = 'btn';
-          lBtn.style.cssText = 'width:auto;padding:6px 12px;margin:0;font-size:12px;background:#555;';
-          lBtn.textContent = 'Logout';
-          lBtn.onclick = logout;
-          header.appendChild(lBtn);
-        }
       }
 
       list.innerHTML = userKeys.map(k => `
@@ -246,10 +254,9 @@
         </div>
       `).join('');
 
-      // Select key for docs
-      if (userKeys.length && !userKeys.includes(currentKey)) {
-        currentKey = userKeys[0];
-        renderCode('node');
+      // Auto-select first key for docs
+      if (userKeys.length > 0) {
+        renderCode(document.querySelector('#code-tabs .on').dataset.lang);
       }
     } catch (e) {
       list.innerHTML = `<p style="color:#ff5b5b; text-align:center; padding:20px;">${e.message}</p>`;
@@ -281,19 +288,19 @@
       if (data.err) throw new Error(data.err);
       
       toast('Key Deleted');
-      if (currentKey === key) currentKey = '';
       loadKeys();
     } catch (e) {
       toast(e.message);
     }
   };
 
+  // Code Snippets
   const codes = {
-    node: () => `const axios = require('axios');\n\nconst API_TOKEN = '${currentKey || 'YOUR_TOKEN'}';\nconst BASE_URL = '${location.origin}/api/ms-api/' + API_TOKEN;\n\nasync function getChats() {\n  const res = await axios.get(BASE_URL + '/chats');\n  console.log(res.data);\n}\n\ngetChats();`,
-    js: () => `const API_TOKEN = '${currentKey || 'YOUR_TOKEN'}';\nconst BASE_URL = '${location.origin}/api/ms-api/' + API_TOKEN;\n\nasync function getChats() {\n  const res = await fetch(BASE_URL + '/chats');\n  const data = await res.json();\n  console.log(data);\n}\n\ngetChats();`,
-    python: () => `import requests\n\nAPI_TOKEN = '${currentKey || 'YOUR_TOKEN'}'\nBASE_URL = '${location.origin}/api/ms-api/' + API_TOKEN\n\ndef get_chats():\n    res = requests.get(BASE_URL + '/chats')\n    print(res.json())\n\nget_chats()`,
-    php: () => `<?php\n$API_TOKEN = '${currentKey || 'YOUR_TOKEN'}';\n$BASE_URL = '${location.origin}/api/ms-api/' . $API_TOKEN;\n\n$ch = curl_init($BASE_URL . '/chats');\ncurl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n$response = curl_exec($ch);\ncurl_close($ch);\n\necho $response;\n?>`,
-    curl: () => `curl -X GET \\\n  "${location.origin}/api/ms-api/${currentKey || 'YOUR_TOKEN'}/chats"`
+    node: () => `const axios = require('axios');\n\nconst API_KEY = '${userKeys[0] || 'YOUR_KEY'}';\nconst BASE_URL = '${location.origin}/api/ms-api/' + API_KEY;\n\nasync function getChats() {\n  const res = await axios.get(BASE_URL + '/chats');\n  console.log(res.data);\n}\n\ngetChats();`,
+    js: () => `const API_KEY = '${userKeys[0] || 'YOUR_KEY'}';\nconst BASE_URL = '${location.origin}/api/ms-api/' + API_KEY;\n\nasync function getChats() {\n  const res = await fetch(BASE_URL + '/chats');\n  const data = await res.json();\n  console.log(data);\n}\n\ngetChats();`,
+    python: () => `import requests\n\nAPI_KEY = '${userKeys[0] || 'YOUR_KEY'}'\nBASE_URL = '${location.origin}/api/ms-api/' + API_KEY\n\ndef get_chats():\n    res = requests.get(BASE_URL + '/chats')\n    print(res.json())\n\nget_chats()`,
+    php: () => `<?php\n$API_KEY = '${userKeys[0] || 'YOUR_KEY'}';\n$BASE_URL = '${location.origin}/api/ms-api/' . $API_KEY;\n\n$ch = curl_init($BASE_URL . '/chats');\ncurl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n$response = curl_exec($ch);\ncurl_close($ch);\n\necho $response;\n?>`,
+    curl: () => `curl -X GET \\\n  "${location.origin}/api/ms-api/${userKeys[0] || 'YOUR_KEY'}/chats"`
   };
 
   function renderCode(lang) {
