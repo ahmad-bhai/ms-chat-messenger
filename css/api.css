@@ -1,0 +1,16 @@
+.dev-card { padding: 16px; margin-bottom: 12px; }
+.key-val { font-family: ui-monospace, Menlo, monospace; background: var(--bd); padding: 8px 10px; border-radius: 10px; font-size: 13px; word-break: break-all; display: block; margin: 8px 0; }
+.code-box { background: #0f0b15; border: 1px solid var(--bd); border-radius: 12px; padding: 12px; overflow-x: auto; font-family: ui-monospace, Menlo, monospace; font-size: 13px; margin-top: 10px; color: #e2e8f0; }
+.code-box pre { margin: 0; white-space: pre-wrap; }
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; overflow-x: auto; scrollbar-width: none; }
+.tabs button { background: var(--bb); border: 1px solid var(--bd); color: var(--tx); padding: 6px 12px; border-radius: 99px; font-size: 13px; cursor: pointer; flex: none; transition: 0.2s; }
+.tabs button.on { background: var(--ac); border-color: transparent; font-weight: bold; color: #fff; }
+.copy-btn { background: none; border: 1px solid var(--bd); padding: 6px 10px; border-radius: 8px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; color: var(--tx); transition: 0.2s; }
+.copy-btn:active { transform: scale(0.95); }
+.copy-btn .i { width: 16px; height: 16px; fill: currentColor; }
+.del-btn { background: rgba(255, 59, 48, 0.15); color: #ff5b5b; border: 1px solid rgba(255, 59, 48, 0.3); padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px;}
+.del-btn:active { transform: scale(0.95); }
+.user-badge { display: flex; align-items: center; justify-content: space-between; background: var(--bb); padding: 10px 14px; border-radius: 12px; margin-bottom: 16px; border: 1px solid var(--bd); }
+.user-badge b { font-size: 14px; word-break: break-all; }
+.logout-btn { background: none; border: 1px solid #ff5b5b; color: #ff5b5b; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+.logout-btn:active { background: rgba(255, 59, 48, 0.2); }
