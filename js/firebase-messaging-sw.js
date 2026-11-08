@@ -1,11 +1,9 @@
 /* MS Chat - js/firebase-messaging-sw.js
-   This is the ONE service worker the page registers. It loads sw.js (cache + notification actions)
-   and Firebase Messaging for background push. Server must send DATA-ONLY messages
-   (no "notification" key) so we can show buttons ourselves. */
+   Service worker for MS Chat with Firebase background push. */
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// Path fix: sw.js root mein hai, isliye /sw.js use karein
+// Path fix: sw.js is in js/ folder
 importScripts('/js/sw.js'); 
 
 firebase.initializeApp({
@@ -17,14 +15,30 @@ firebase.initializeApp({
   appId: '1:34240289213:web:d9f18bcfa824bbac5e1ad4'
 });
 
+// Ensure sw.js is fully loaded before Firebase handles messages
 try {
   const messaging = firebase.messaging();
+  
+  // FCM ko background mein receive karein
   messaging.onBackgroundMessage(payload => {
     const d = payload.data || {};
-    // If an old-style "notification" payload arrives, FCM already shows it; avoid duplicates.
+    
+    // Agar FCM ne default notification bheja hai to dobara mat dikhao
     if (payload.notification && !d.title) return;
-    return self.showMsgNotification(d);
+    
+    // sw.js mein showMsgNotification define hai
+    if (typeof self.showMsgNotification === 'function') {
+      return self.showMsgNotification(d);
+    } else {
+      // Fallback: Agar sw.js load nahi hua
+      console.warn('showMsgNotification not defined, using default');
+      return self.registration.showNotification(d.title || 'MS Chat', {
+        body: d.body || '',
+        icon: '/icon-512.png',
+        data: d
+      });
+    }
   });
 } catch (e) { 
-    console.error('Firebase messaging error:', e);
+  console.error('Firebase messaging error:', e);
 }
