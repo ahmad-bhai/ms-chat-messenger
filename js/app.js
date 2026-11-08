@@ -152,17 +152,24 @@ Act.spo=el=>{const a=el.querySelector('.sh'),b=el.querySelector('.sv');if(!a||!b
 Act.repl=()=>{S.fm='rep';fl.accept='*/*';fl.removeAttribute('capture');fl.multiple=false;fl.click()};
 const tdraw=()=>{if(S.td)return;S.td=setTimeout(()=>{S.td=0;drawMs()},250)};
 
-// ============ SUPABASE UPLOAD LOGIC ============
+// ============ SUPABASE UPLOAD LOGIC (FIXED) ============
 async function flush(){if(S.fl)return;S.fl=1;try{while(OB.length){const m=OB[0];
 if(m.file){try{
   const url = await new Promise(async (resolve, reject) => {
     try {
       const filename = `${m.file.name.replace(/[^\w.\-]/g, '_')}`;
-      // 1. Get signed upload url from server
+      
+      // FormData use kar rahe hain taake Authorization header properly jaye
+      const formData = new FormData();
+      formData.append('file', m.file);
+      
       const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + S.ac[S.ai].token, 'Content-Type': m.file.type || 'application/octet-stream' },
-        body: m.file
+        headers: { 
+          'Authorization': 'Bearer ' + S.ac[S.ai].token
+          // Content-Type nahi likhna, browser khud set karega (multipart/form-data)
+        },
+        body: formData
       });
       const data = await res.json();
       if (data.err) throw new Error(data.err);
@@ -245,7 +252,6 @@ Act.unm=async()=>{await api('/chat/mute',{chat:cid(),until:0});S.cur.mute=0;toas
 Act.mu=async()=>{const r=await dlg({t:'Mute',o:['Disable sound','Mute for…','Mute forever']});if(r.i<0)return;let u=-2,msg='Sound disabled';if(r.i===1){const d=await dlg({t:'Mute for',o:['1 hour','8 hours','2 days','7 days']});if(d.i<0)return;u=Date.now()+[1,8,48,168][d.i]*36e5;msg='Muted for '+['1 hour','8 hours','2 days','7 days'][d.i]}if(r.i===2){u=-1;msg='Muted forever'}await api('/chat/mute',{chat:cid(),until:u});S.cur.mute=u;toast(msg)};
 Act.clr=async()=>{const c=S.cur,r=await dlg({t:'Clear chat?',cb:c.saved?'':`also delete for ${nm(ct(c))}`,ok:'Clear',red:1});if(r.ok){await api('/chat/clear',{chat:cid(),both:r.cb});S.ms=[];drawMs()}};
 Act.dch=async()=>{const c=S.cur,r=await dlg({t:'Delete chat?',cb:c.saved?'':`also delete for ${nm(ct(c))}`,ok:'Delete',red:1});if(r.ok){await api('/chat/delete',{chat:cid(),both:r.cb});Act.back()}};
-
 /* ---------- pages ---------- */
 function page(t,h,right){const p=$('#pg');if(!p.hidden)S.pgs.push(p.innerHTML);p.hidden=false;p.innerHTML=`<div class="hd"><button class="ib" data-a="pback">${ic('back')}</button><b class="ttl fx">${t}</b>${right||''}</div><div style="overflow:auto;flex:1;padding:0 10px 20px">${h}</div>`}
 Act.pback=()=>{const p=$('#pg');if(S.pgs.length)p.innerHTML=S.pgs.pop();else p.hidden=true};
