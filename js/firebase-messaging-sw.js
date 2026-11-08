@@ -1,10 +1,12 @@
-/* MS Chat - firebase-messaging-sw.js
+/* MS Chat - js/firebase-messaging-sw.js
    This is the ONE service worker the page registers. It loads sw.js (cache + notification actions)
    and Firebase Messaging for background push. Server must send DATA-ONLY messages
    (no "notification" key) so we can show buttons ourselves. */
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
-importScripts('/sw.js');
+
+// Path fix: sw.js root mein hai, isliye /sw.js use karein
+importScripts('/js/sw.js'); 
 
 firebase.initializeApp({
   apiKey: 'AIzaSyD7Nt1wwgGy5GxKFrc1NQvv8ulA3fDSJQE',
@@ -23,4 +25,6 @@ try {
     if (payload.notification && !d.title) return;
     return self.showMsgNotification(d);
   });
-} catch (e) { /* FCM optional */ }
+} catch (e) { 
+    console.error('Firebase messaging error:', e);
+}
