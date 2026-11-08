@@ -11,13 +11,14 @@
 
 <script>
   if ('serviceWorker' in navigator) {
-    // FIX: Scope '/' set kiya taake offline mode aur share target poori app par kaam kare
-    navigator.serviceWorker.register('/js/sw.js', { scope: '/' }).then(reg => {
-      console.log('SW registered successfully');
-    }).catch(err => {
-      console.warn('SW registration failed:', err);
-    });
-  }
+  navigator.serviceWorker.register('/js/firebase-messaging-sw.js', { scope: '/' }).then(reg => {
+    console.log('SW registered with scope /');
+  }).catch(err => {
+    console.warn('SW registration failed:', err);
+    // Fallback
+    navigator.serviceWorker.register('/js/sw.js', { scope: '/' });
+  });
+}
 </script>
 </head>
 <body>
