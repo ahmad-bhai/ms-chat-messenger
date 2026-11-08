@@ -26,7 +26,6 @@ const setMr=()=>document.documentElement.style.setProperty('--mr',(S.st.mr==null
 const ANS=[0,.1,.5,.7,1],ANL=['Off','10%','50%','70%','100%'];
 const setAn=()=>{const v=S.st.an==null?4:S.st.an;document.documentElement.style.setProperty('--an',ANS[v]);document.documentElement.dataset.an=ANS[v]};
 const RE=[...'❤️👍👎🔥🥰👏😁🤔🤯😱🤬😢🎉🤩🤮💩🙏👌🕊️🤡🥱😍❤️‍🔥💯🤣⚡🏆💔💋😈😴😭😇🤝🤗🫡🆒💘😘🙈🙊🙉😎😡'.matchAll(EM)].map(m=>m[0]);
-// 5 Backgrounds implemented
 const WP=['url("/bg/1.svg") center/cover','url("/bg/2.svg") center/cover','url("/bg/3.svg") center/cover','url("/bg/4.svg") center/cover','url("/bg/5.svg") center/cover'];
 const wp=()=>S.st.wu?`url("${S.st.wu}") center/cover`:WP[S.st.wp];
 const av=(u,z=46,saved)=>saved?`<span class="av" style="width:${z}px;height:${z}px;background:#2b7fc7">${ic('bm')}</span>`:u.avatar?`<img class="av" style="width:${z}px;height:${z}px" src="${esc(u.avatar)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="av" style="display:none;width:${z}px;height:${z}px;background:hsl(${[...u.id].reduce((a,c)=>a+c.charCodeAt(0),0)*37%360},55%,45%)">${esc(ini(u.name))}</span>`:`<span class="av" style="width:${z}px;height:${z}px;background:hsl(${[...u.id].reduce((a,c)=>a+c.charCodeAt(0),0)*37%360},55%,45%)">${esc(ini(u.name))}</span>`;
@@ -153,24 +152,21 @@ Act.spo=el=>{const a=el.querySelector('.sh'),b=el.querySelector('.sv');if(!a||!b
 Act.repl=()=>{S.fm='rep';fl.accept='*/*';fl.removeAttribute('capture');fl.multiple=false;fl.click()};
 const tdraw=()=>{if(S.td)return;S.td=setTimeout(()=>{S.td=0;drawMs()},250)};
 
-// VERCEL BLOB UPLOAD LOGIC (Connected to new server)
+// ============ SUPABASE UPLOAD LOGIC ============
 async function flush(){if(S.fl)return;S.fl=1;try{while(OB.length){const m=OB[0];
 if(m.file){try{
   const url = await new Promise(async (resolve, reject) => {
     try {
-      const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
-      const newBlob = await upload(m.file.name, m.file, {
-        access: 'public',
-        handleUploadUrl: API_BASE + '/upload',
-        clientPayload: S.ac[S.ai].token,
-        onUploadProgress: (progressEvent) => {
-          if (m.up !== progressEvent.percentage) {
-            m.up = progressEvent.percentage;
-            tdraw();
-          }
-        }
+      const filename = `${m.file.name.replace(/[^\w.\-]/g, '_')}`;
+      // 1. Get signed upload url from server
+      const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + S.ac[S.ai].token, 'Content-Type': m.file.type || 'application/octet-stream' },
+        body: m.file
       });
-      resolve(newBlob.url);
+      const data = await res.json();
+      if (data.err) throw new Error(data.err);
+      resolve(data.url);
     } catch (err) { reject(err); }
   });
   m.blob = m.media.url;
@@ -383,13 +379,15 @@ async function processSharedFiles(files, targetChat, store) {
     
     let url;
     try {
-      const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
-      const newBlob = await upload(f.name, f, {
-        access: 'public',
-        handleUploadUrl: API_BASE + '/upload',
-        clientPayload: S.ac[S.ai].token
+      const filename = `${f.name.replace(/[^\w.\-]/g, '_')}`;
+      const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + S.ac[S.ai].token, 'Content-Type': f.type || 'application/octet-stream' },
+        body: f
       });
-      url = newBlob.url;
+      const data = await res.json();
+      if (data.err) throw new Error(data.err);
+      url = data.url;
     } catch (e) {
       toast('Upload failed: ' + e.message);
       continue;
