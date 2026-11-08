@@ -2,11 +2,15 @@
    Client side: service worker register, FCM token, foreground sound/badge,
    permissions (notifications / camera / mic / storage), open-chat deep links.
    Usage (index.html):
-     <script src="/notification.js"></script>
+     <script src="/js/notification.js"></script>
      MSNotify.init({ token: authToken, onOpenChat:(chatId,msgId)=>{...}, onForeground:(data)=>{...} });
 */
 (function () {
   'use strict';
+
+  // --- SERVER URL FIX ---
+  const SERVER_URL = 'https://server-ms-chat.vercel.app';
+  const API_BASE = SERVER_URL + '/api';
 
   const FB_CONFIG = {
     apiKey: 'AIzaSyD7Nt1wwgGy5GxKFrc1NQvv8ulA3fDSJQE',
@@ -16,11 +20,15 @@
     messagingSenderId: '34240289213',
     appId: '1:34240289213:web:d9f18bcfa824bbac5e1ad4'
   };
+  
   // Firebase Console -> Project settings -> Cloud Messaging -> Web Push certificates -> Key pair
   const VAPID_KEY = 'BD4RUDm98_pv7afX56-5V0HTjWSZri3uke2iHTlsAbnyJglvIollL4cdfYd20E8Q2_Suh3Q3kSoKNJ_cwL_qY-U';
-  const ICON = 'https://ms-chat-messager.vercel.app/maskable-512.png';
+  
+  // --- PATHS FIX (app/ aur js/ folder ke mutabiq) ---
+  const ICON = SERVER_URL + '/icon-512.png'; 
+  const SOUND_URL = '/js/notification.mp3'; // Sound js folder mein hai
+  
   const FB_VER = '10.12.0';
-  const SOUND_URL = 'https://ms-chat-messager.vercel.app/notification.mp3';
 
   const state = { reg: null, messaging: null, token: null, opts: {}, activeChat: null, fcmToken: null };
   const sound = new Audio(SOUND_URL);
@@ -43,8 +51,9 @@
     try { localStorage.setItem('ms_mutes', JSON.stringify(m)); } catch (e) {}
   }
 
+  // API call naye server par jayegi
   async function api(path, body) {
-    const r = await fetch('/api' + path, {
+    const r = await fetch(API_BASE + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (state.token || '') },
       body: JSON.stringify(body || {})
@@ -67,7 +76,7 @@
       if (navigator.setAppBadge) { n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge(); }
     } catch (e) {}
     const base = document.title.replace(/^\(\d+\)\s*/, '');
-    document.title = n > 0 ? '(' + n + ') ' + base : base;
+    document.title = n > 0 ? '(' + n + ')' + base : base;
   }
 
   function playSound() { try { sound.currentTime = 0; sound.play().catch(() => {}); } catch (e) {} }
@@ -128,7 +137,16 @@
     state.opts = opts || {};
     state.token = state.opts.token || null;
     if (!('serviceWorker' in navigator)) return false;
-    state.reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+
+    // --- SERVICE WORKER PATH FIX ---
+    // Root folder wali file register karein taake scope poori app par ho
+    try {
+      state.reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+    } catch (e) {
+      console.warn('SW registration failed, trying /js/ path', e);
+      state.reg = await navigator.serviceWorker.register('/js/firebase-messaging-sw.js', { scope: '/' });
+    }
+
     await navigator.serviceWorker.ready;
     navigator.serviceWorker.addEventListener('message', e => {
       const m = e.data || {};
@@ -172,6 +190,7 @@
       });
     } catch (e) { console.warn('show notification failed', e); }
   }
+  
   const test = () => api('/push/test', {});
 
   window.MSNotify = {
