@@ -5,15 +5,21 @@ const dlabel=ts=>{const d=new Date(ts),df=_df(ts),n=new Date();return df<=0?'Tod
 const dsep=(p,m)=>!p||new Date(p.ts).toDateString()!==new Date(m.ts).toDateString()?`<div class="dsep"><span>${dlabel(m.ts)}</span></div>`:'';
 const ltime=ts=>{const d=new Date(ts),df=_df(ts),n=new Date();return df<=0?tm(ts):df===1?'Yesterday':df<7?d.toLocaleDateString([],{weekday:'short'}):d.toLocaleDateString([],d.getFullYear()===n.getFullYear()?{day:'numeric',month:'short'}:{day:'2-digit',month:'2-digit',year:'2-digit'})};
 
+// Global Selection Set (Fixes bug where SEL was undefined)
+if (!window.SEL) window.SEL = new Set();
+
 /* ---------- flags (pin / forced-unread) merged into the chat list ---------- */
 function applyFlags(fl){const f=(fl&&fl.flags)||{};S.ch.forEach(c=>{const x=f[c.chat]||{};c.pin=x.pin||0;c.unr=!!x.unr});S.ch.sort((a,b)=>(b.pin?1:0)-(a.pin?1:0)||(b.pin-a.pin));[...SEL].forEach(id=>{if(!S.ch.some(c=>c.chat===id))SEL.delete(id)})}
 const selCs=()=>[...SEL].map(id=>S.ch.find(c=>c.chat===id)).filter(Boolean);
-function lhd(){if(!SEL.size)return `<button class="ib" data-a="drawer">${ic('menu')}</button><b class="ttl fx">MS Chat</b><button class="ib" data-a="gs">${ic('search')}</button>`;
+function lhd(){
+ if(!SEL.size)return `<button class="ib" data-a="drawer">${ic('menu')}</button><b class="ttl fx">MS Chat</b><button class="ib" data-a="gs">${ic('search')}</button>`;
  const cs=selCs(),anyUn=cs.some(c=>c.unread||c.unr);
- return `<button class="ib" data-a="selx">${ic('close')}</button><b class="ttl fx">${SEL.size}</b><button class="ib" data-a="selpin" title="Pin / Unpin">${ic('pin')}</button><button class="ib" data-a="selmute" title="Mute / Unmute">${ic('mute')}</button><button class="ib" data-a="selread" title="${anyUn?'Mark as read':'Mark as unread'}">${ic(anyUn?'ok':'mail')}</button><button class="ib" data-a="seldel" title="Delete">${ic('del')}</button><button class="ib" data-a="selmore">${ic('more')}</button>`}
+ return `<button class="ib" data-a="selx">${ic('close')}</button><b class="ttl fx">${SEL.size}</b><button class="ib" data-a="selpin" title="Pin / Unpin">${ic('pin')}</button><button class="ib" data-a="selmute" title="Mute / Unmute">${ic('mute')}</button><button class="ib" data-a="selread" title="${anyUn?'Mark as read':'Mark as unread'}">${ic(anyUn?'ok':'mail')}</button><button class="ib" data-a="seldel" title="Delete">${ic('del')}</button><button class="ib" data-a="selmore">${ic('more')}</button>`;
+}
 function selUi(){const h=$('#lhd');if(h)h.innerHTML=lhd();cl2()}
 function selToggle(id){SEL.has(id)?SEL.delete(id):SEL.add(id);selUi()}
 function selStart(id){const sb=$('#sb');if(sb&&!sb.hidden){sb.hidden=true;$('#q').value=''}SEL.add(id);selUi();if(navigator.vibrate)navigator.vibrate(15)}
+
 async function selDone(msg){SEL.clear();await loadChats();selUi();msg&&toast(msg)}
 Act.selx=()=>{SEL.clear();selUi()};
 Act.selall=()=>{S.ch.forEach(c=>SEL.add(c.chat));selUi()};
@@ -46,18 +52,59 @@ function rsAdd(u){if(!u||!u.id||u.sys)return;const l=rsGet().filter(x=>x.id!==u.
 function drawRecent(){const el=$('#rec');if(!el)return;const l=rsGet();el.innerHTML=l.length?`<div class="sh2"><span>Recent</span><b class="lnk2" data-a="rsclr">Clear</b></div>`+l.map(u=>`<div class="row" data-a="ou" data-u="${esc(u.username)}">${av(u)}<div class="fx"><b>${nm(u.name)}</b><br><small>@${esc(u.username)}</small></div><button class="ib" data-a="rsdel" data-i="${u.id}">${ic('close')}</button></div>`).join(''):'<p class="hint">Search people by @username</p>'}
 Act.rsclr=()=>{localStorage[RK()]='[]';drawRecent()};
 Act.rsdel=el=>{localStorage[RK()]=JSON.stringify(rsGet().filter(x=>x.id!==el.dataset.i));drawRecent()};
-async function srchHome(){const box=$('#cl');if(!box)return;box.innerHTML='<div id="top"></div><div id="rec"></div>';drawRecent();
- let ids=S.topc&&Date.now()-S.topc.t<6e4?S.topc.v:null;
- if(!ids){const j=await api('/top');ids=(j.top||[]).map(x=>x.chat);if(!ids.length)ids=S.ch.map(c=>c.chat);ids=ids.filter(id=>{const c=S.ch.find(x=>x.chat===id);return c&&!c.saved&&!c.peer.sys}).slice(0,21);S.topc={t:Date.now(),v:ids}}
- const el=$('#top');if(!el||$('#q').value)return;const cs=ids.map(id=>S.ch.find(c=>c.chat===id)).filter(Boolean);
- el.innerHTML=cs.length?`<div class="sh2"><span>People</span></div><div class="tops">${cs.map(c=>`<div data-a="open" data-c="${c.chat}">${avo(c.peer,56)}<span class="sn">${nm((c.cn||c.peer.name).split(' ')[0])}</span></div>`).join('')}</div>`:''}
+
+async function srchHome(){
+  const box=$('#cl');if(!box)return;
+  box.innerHTML='<div id="top"></div><div id="rec"></div>';
+  drawRecent();
+  
+  let ids=S.topc&&Date.now()-S.topc.t<6e4?S.topc.v:null;
+  if(!ids){
+    // Fallback to local chats if /top API fails
+    ids=S.ch.filter(c=>!c.saved&&!c.peer.sys).map(c=>c.chat).slice(0,21);
+    S.topc={t:Date.now(),v:ids}
+  }
+  const el=$('#top');if(!el||$('#q').value)return;
+  const cs=ids.map(id=>S.ch.find(c=>c.chat===id)).filter(Boolean);
+  el.innerHTML=cs.length?`<div class="sh2"><span>People</span></div><div class="tops">${cs.map(c=>`<div data-a="open" data-c="${c.chat}">${avo(c.peer,56)}<span class="sn">${nm((c.cn||c.peer.name).split(' ')[0])}</span></div>`).join('')}</div>`:''
+}
+
 Act.gs=()=>{const s=$('#sb');s.hidden=!s.hidden;if(s.hidden){$('#q').value='';cl2()}else{$('#q').focus();srchHome()}};
 S.su={};
-function lsearch(v){clearTimeout(st1);st1=setTimeout(async()=>{if(!v.trim())return srchHome();const q=v.trim().toLowerCase().replace(/^@/,'');
- const loc=S.ch.filter(c=>!c.saved&&(ct(c).toLowerCase().includes(q)||(c.peer.username||'').toLowerCase().includes(q)));
- const j=await api('/search?q='+E(v));if($('#q').value.trim()!==v.trim())return;(j.users||[]).forEach(u=>S.su[u.username]=u);
- const seen=new Set(loc.map(c=>c.peer.id)),us=(j.users||[]).filter(u=>!seen.has(u.id));
- $('#cl').innerHTML=loc.map(c=>`<div class="row" data-a="open" data-c="${c.chat}">${avo(c.peer,46)}<div class="fx"><b>${nm(ct(c))}</b><br><small>@${esc(c.peer.username)}</small></div></div>`).join('')+us.map(u=>`<div class="row" data-a="ou" data-u="${esc(u.username)}">${av(u)}<div class="fx"><b>${nm(u.name)}</b><br><small>@${esc(u.username)}</small></div></div>`).join('')+(j.chats||[]).map(x=>{const c=S.ch.find(y=>y.chat===x.chat);return c?`<div class="row" data-a="open" data-c="${x.chat}">${av(c.peer,46,c.saved)}<div class="fx"><b>${nm(ct(c))}</b><div class="sn">${rich(mask(x.snippet))}</div></div></div>`:''}).join('')||'<p style="text-align:center;padding:24px;opacity:.6">No results</p>'},300)}
+
+function lsearch(v){
+  clearTimeout(st1);
+  st1=setTimeout(async()=>{
+    if(!v.trim())return srchHome();
+    const q=v.trim().toLowerCase().replace(/^@/,'');
+    const loc=S.ch.filter(c=>!c.saved&&(ct(c).toLowerCase().includes(q)||(c.peer.username||'').toLowerCase().includes(q)));
+    
+    // API search (agar server down hai to crash nahi hoga)
+    let j = {users:[], chats:[]};
+    try { j = await api('/search?q='+E(v)); } catch(e) {}
+    
+    if($('#q').value.trim()!==v.trim())return;
+    (j.users||[]).forEach(u=>S.su[u.username]=u);
+    const seen=new Set(loc.map(c=>c.peer.id)),us=(j.users||[]).filter(u=>!seen.has(u.id));
+    
+    $('#cl').innerHTML = loc.map(c=>`<div class="row" data-a="open" data-c="${c.chat}">${avo(c.peer,46)}<div class="fx"><b>${nm(ct(c))}</b><br><small>@${esc(c.peer.username)}</small></div></div>`).join('')
+    + us.map(u=>`<div class="row" data-a="ou" data-u="${esc(u.username)}">${av(u)}<div class="fx"><b>${nm(u.name)}</b><br><small>@${esc(u.username)}</small></div></div>`).join('')
+    + (j.chats||[]).map(x=>{const c=S.ch.find(y=>y.chat===x.chat);return c?`<div class="row" data-a="open" data-c="${x.chat}">${av(c.peer,46,c.saved)}<div class="fx"><b>${nm(ct(c))}</b><div class="sn">${rich(mask(x.snippet))}</div></div></div>`:''}).join('')
+    || '<p style="text-align:center;padding:24px;opacity:.6">No results</p>';
+  },300)
+}
+
+// FIXED: Chat Open vs Selection logic
 const _ou=Act.ou;
 Act.ou=el=>{const u=S.su[el.dataset.u]||rsGet().find(x=>x.username===el.dataset.u);if(u)rsAdd(u);_ou(el)};
-Act.open=el=>{if(SEL.size)return selToggle(el.dataset.c);const c=S.ch.find(x=>x.chat===el.dataset.c);if(!c)return;if(!c.saved&&!c.peer.sys&&$('#sb')&&!$('#sb').hidden)rsAdd(c.peer);openC(c)};
+
+Act.open=el=>{
+  // Agar selection mode on hai to toggle karein
+  if(SEL.size){ return selToggle(el.dataset.c); }
+  
+  // Warna normal chat open karein
+  const c=S.ch.find(x=>x.chat===el.dataset.c);
+  if(!c)return;
+  if(!c.saved && !c.peer.sys && $('#sb') && !$('#sb').hidden) rsAdd(c.peer);
+  openC(c);
+};
