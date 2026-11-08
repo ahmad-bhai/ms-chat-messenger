@@ -1,3 +1,5 @@
+// @ ye Mera signature aur iski surgery kardo
+
 // MS Chat - Open Source Frontend (FINAL FIXED)
 const API_BASE = 'https://server-ms-chat.vercel.app/api';
 const $=s=>document.querySelector(s),E=encodeURIComponent;
@@ -38,26 +40,36 @@ const rw=(i,t,s,a)=>`<div class="row" ${a?`data-a="${a}"`:''}>${tl(i)}<div class
 const it=(i,t,a,red)=>`<div class="it${red?' red':''}" data-a="${a}">${ic(i)}${t}</div>`;
 let tt;const toast=t=>{$('#ts').innerHTML=`<div class="tt">${t}</div>`;clearTimeout(tt);tt=setTimeout(()=>$('#ts').innerHTML='',2600)};
 
-// ================= api() with retry & token check =================
+// ================= api() with retry & token check (FIXED) =================
 async function api(p, b, retry = 0) {
   const token = (S.ac[S.ai] || {}).token;
-  if (!token || token === 'undefined') {
+  const isAuthRoute = p.startsWith('/auth');
+
+  // Allow auth routes to proceed without a token
+  if (!isAuthRoute && (!token || token === 'undefined')) {
     console.warn('No token for API call:', p);
     return { err: 'Please login again' };
   }
+
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+
     const r = await fetch(API_BASE + p, {
       method: b ? 'POST' : 'GET',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      headers: headers,
       body: b ? JSON.stringify(b) : undefined
     });
+
     if (r.status === 401) {
+      if (isAuthRoute) return { err: 'Invalid credentials or session expired' };
+      
       if (retry === 0 && S.me) {
         await new Promise(res => setTimeout(res, 500));
         return api(p, b, 1);
       }
       if (S.me) localLogout();
-      return {};
+      return { err: 'Session expired. Please login again.' };
     }
     return r.json().catch(() => ({}));
   } catch (e) {
@@ -109,7 +121,14 @@ async function qrApprove(id){const j=await api('/auth/qr-approve',{id});if(!ok(j
 
 /* ---------- boot / lists ---------- */
 async function boot(){document.documentElement.dataset.t=S.st.t;document.documentElement.style.setProperty('--fs',S.st.fs+'px');setAn();setMr();if(!S.ac[S.ai])S.ai=0;if(!S.ac.length){authScr();return}
-const j=await api('/me');if(!j.me)return;S.me=j.me;S.ac[S.ai].name=j.me.name;sv();
+const j=await api('/me');
+if(!j.me){
+  if(j.err && (j.err.includes('login') || j.err.includes('expired'))){
+    localLogout();
+  }
+  return;
+}
+S.me=j.me;S.ac[S.ai].name=j.me.name;sv();
 if(S.me.pass&&!sessionStorage.ul)for(;;){const r=await dlg({t:'Enter passcode',in:'Passcode',ty:'password',ok:'Unlock',nc:1});if(r.ok&&(await api('/sec/verify',{kind:'pass',value:r.v})).ok){sessionStorage.ul=1;break}}
 $('#cv').hidden=$('#pg').hidden=true;S.cur=null;S.pgs=[];const c=await api('/chats');S.ch=c.chats||[];S.v=c.v||0;list();
 if(!S.ni){S.ni=1;MSNotify.init({token:S.ac[S.ai].token,onOpenChat:openById,onAction:()=>loadChats()})}else MSNotify.setAuth(S.ac[S.ai].token);
