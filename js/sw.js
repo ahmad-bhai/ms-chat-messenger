@@ -1,14 +1,13 @@
 /* MS Chat - js/sw.js
-   Cache + notification display + notification actions (Reply / Mark as read / Mute) + deep link open + Share Target (Android). */
-const CACHE = 'ms-chat-v10'; // Version bump (naye paths aur server ke liye)
-const SERVER_URL = 'https://server-ms-chat.vercel.app'; // Backend domain
+   Cache + notification display + notification actions + deep link + Share Target */
+const CACHE = 'ms-chat-v11'; // Version bump
+const SERVER_URL = 'https://server-ms-chat.vercel.app';
 const API_BASE = SERVER_URL + '/api';
-const ORIGIN = self.location.origin; // Frontend ka current domain
-const ICON = SERVER_URL + '/icon-512.png'; // Backend se load hoga
+const ORIGIN = self.location.origin;
+const ICON = SERVER_URL + '/icon-512.png';
 const BADGE = SERVER_URL + '/icon-192.png';
 const EMOJI_HOST = 'magic-scripts-emojis.vercel.app';
 
-// Sahi paths (js/ aur app/ folders ke mutabiq)
 const SHELL = [
   '/', 
   '/index.html', 
@@ -19,12 +18,11 @@ const SHELL = [
   '/js/media.js', 
   '/js/chats.js', 
   '/api.html',
-  '/app/white-read.svg',
   '/icon-192.png', 
   '/icon-512.png'
 ];
 
-/* ---------- tiny IndexedDB key-value (stores auth token for notification actions) ---------- */
+/* ---------- IndexedDB for Auth Token ---------- */
 function idb() {
   return new Promise((res, rej) => {
     const r = indexedDB.open('ms-chat-sw', 1);
@@ -42,7 +40,7 @@ async function kvGet(k) {
   return new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); });
 }
 
-/* ---------- Share Target DB (Shared files ko save karne ke liye) ---------- */
+/* ---------- Share Target DB ---------- */
 function shareDb() {
   return new Promise((res, rej) => {
     const r = indexedDB.open('MS_Chat_Share', 1);
@@ -52,7 +50,7 @@ function shareDb() {
   });
 }
 
-/* ---------- lifecycle ---------- */
+/* ---------- Lifecycle ---------- */
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch((err) => console.warn('Cache add failed', err))).then(() => self.skipWaiting()));
 });
@@ -63,21 +61,20 @@ self.addEventListener('activate', e => {
   );
 });
 
-/* ---------- fetch & share target ---------- */
+/* ---------- Fetch ---------- */
 self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
 
-  // 1. Share Target API
+  // 1. Share Target
   if (url.pathname === '/share-target/' && req.method === 'POST') {
     e.respondWith(handleShare(req));
     return;
   }
 
-  // 2. Baaki normal fetch requests
   if (req.method !== 'GET') return;
 
-  // Emoji images: cache-first
+  // Emoji images
   if (url.hostname === EMOJI_HOST || url.pathname.startsWith('/api/emoji')) {
     e.respondWith(caches.open(CACHE).then(async c => {
       const hit = await c.match(req);
@@ -88,19 +85,20 @@ self.addEventListener('fetch', e => {
     return;
   }
   
-  // External URLs (jaise backend) ignore karein
+  // External URLs (backend) - ignore
   if (url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
   if (/\.(mp4|webm|mp3|ogg|m4a|wav)$/i.test(url.pathname) && url.pathname !== '/js/notification.mp3') return;
 
-  // Pages: network-first, fallback to cached shell
+  // Pages
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).then(res => {
       const cl = res.clone(); caches.open(CACHE).then(c => c.put('/index.html', cl)); return res;
     }).catch(() => caches.match('/index.html').then(r => r || caches.match('/'))));
     return;
   }
-  // Static assets: stale-while-revalidate
+  
+  // Static assets
   e.respondWith(caches.match(req).then(hit => {
     const net = fetch(req).then(res => {
       if (res.ok) { const cl = res.clone(); caches.open(CACHE).then(c => c.put(req, cl)); }
@@ -110,7 +108,7 @@ self.addEventListener('fetch', e => {
   }));
 });
 
-/* ---------- Share Handler Function ---------- */
+/* ---------- Share Handler ---------- */
 async function handleShare(request) {
   try {
     const formData = await request.formData();
@@ -139,14 +137,14 @@ async function handleShare(request) {
   return Response.redirect('/?shared=true', 303);
 }
 
-/* ---------- messages from page ---------- */
+/* ---------- Message from page ---------- */
 self.addEventListener('message', e => {
   const m = e.data || {};
   if (m.type === 'SET_AUTH') e.waitUntil(kvSet('token', m.token || null));
   if (m.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-/* ---------- show notification ---------- */
+/* ---------- Show Notification ---------- */
 self.showMsgNotification = function (d) {
   d = d || {};
   const chatId = d.chatId || 'ms-chat';
@@ -171,12 +169,11 @@ self.showMsgNotification = function (d) {
   return self.registration.showNotification(title, opts);
 };
 
-/* ---------- notification click / actions ---------- */
+/* ---------- Notification Actions ---------- */
 async function callAction(body) {
   const token = await kvGet('token');
   if (!token) return null;
   try {
-    // Naye server URL par action bhejein
     const r = await fetch(API_BASE + '/notif/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -221,7 +218,7 @@ self.addEventListener('notificationclick', e => {
     return;
   }
   if (action === 'mute') {
-    const until = Date.now() + 60 * 60 * 1000; // 1 hour
+    const until = Date.now() + 60 * 60 * 1000;
     e.waitUntil(callAction({ action: 'mute', chatId: data.chatId, until })
       .then(() => self.clients.matchAll({ type: 'window' }))
       .then(cs => cs.forEach(c => c.postMessage({ type: 'NOTIF_ACTION', action: 'mute', chatId: data.chatId, until }))));
