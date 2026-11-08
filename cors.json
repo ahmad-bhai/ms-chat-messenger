@@ -1,1 +1,8 @@
-[{"origin":["*"],"method":["GET","HEAD"],"maxAgeSeconds":3600,"responseHeader":["Content-Type","Content-Length","Range","Content-Range"]}]
+[
+  {
+    "origin": ["https://ms-chat-messenger.vercel.app", "http://localhost:3000"],
+    "method": ["GET", "HEAD", "POST", "PUT"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Content-Length", "Range", "Content-Range", "Accept-Ranges"]
+  }
+]
