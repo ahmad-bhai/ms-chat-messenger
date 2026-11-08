@@ -201,7 +201,7 @@ Act.spo=el=>{const a=el.querySelector('.sh'),b=el.querySelector('.sv');if(!a||!b
 Act.repl=()=>{S.fm='rep';fl.accept='*/*';fl.removeAttribute('capture');fl.multiple=false;fl.click()};
 const tdraw=()=>{if(S.td)return;S.td=setTimeout(()=>{S.td=0;drawMs()},250)};
 
-// ============ SUPABASE UPLOAD LOGIC (FINAL FIXED WITH CONTENT-TYPE) ============
+// ============ SUPABASE UPLOAD LOGIC (FINAL FIXED WITH HEADERS) ============
 async function flush(){if(S.fl)return;S.fl=1;try{while(OB.length){const m=OB[0];
 if(m.file){try{
   const url = await new Promise(async (resolve, reject) => {
@@ -213,8 +213,8 @@ if(m.file){try{
       const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
         method: 'POST',
         headers: { 
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/octet-stream'  // MUST for Vercel
+          'Authorization': 'Bearer ' + token, // <-- YEH HEADER ADD KIYA HAI
+          'Content-Type': m.file.type || 'application/octet-stream' // <-- PROPER CONTENT TYPE
         },
         body: m.file
       });
@@ -470,8 +470,8 @@ async function processSharedFiles(files, targetChat, store) {
       const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
         method: 'POST',
         headers: { 
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/octet-stream'  // MUST for Vercel
+          'Authorization': 'Bearer ' + token, // <-- YEH HEADER ADD KIYA HAI
+          'Content-Type': f.type || 'application/octet-stream' // <-- PROPER CONTENT TYPE
         },
         body: f
       });
