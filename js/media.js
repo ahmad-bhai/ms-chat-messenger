@@ -96,7 +96,7 @@ Act.fmore=()=>ftDraw('menu');Act.fback=()=>ftDraw('sel');
 /* ---------- audio keeps playing in background + lock-screen controls ---------- */
 if('mediaSession' in navigator){
  AP.a.addEventListener('play',()=>{const m=S.ms.find(x=>String(x.id)===String(AP.id)),x=m&&m.media;
-  navigator.mediaSession.metadata=new MediaMetadata({title:x?(x.type==='voice'?'Voice message':(x.name||'Audio')):'Audio',artist:m?(m.from===S.me.id?S.me.name:(S.cur?S.cur.peer.name:'MS Chat')):'MS Chat',album:'MS Chat',artwork:[{src:'/icon-512.png',sizes:'512x512',type:'image/png'}]})});
+  navigator.mediaSession.metadata=new MediaMetadata({title:x?(x.type==='voice'?'Voice message':(x.name||'Audio')):'Audio',artist:m?(m.from===S.me.id?S.me.name:(S.cur?S.cur.peer.name:'MS Chat')):'MS Chat',album:'MS Chat',artwork:[{src:API_BASE.replace('/api','')+'/icon-512.png',sizes:'512x512',type:'image/png'}]})});
  const ms=(a,f)=>{try{navigator.mediaSession.setActionHandler(a,f)}catch(e){}};
  ms('play',()=>AP.a.play());ms('pause',()=>AP.a.pause());ms('stop',()=>{AP.a.pause();AP.a.currentTime=0});
  ms('seekbackward',()=>{AP.a.currentTime=Math.max(0,AP.a.currentTime-10)});ms('seekforward',()=>{AP.a.currentTime=Math.min(AP.a.duration||1e9,AP.a.currentTime+10)})}
