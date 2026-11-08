@@ -1,7 +1,7 @@
 :root{--bg:#14101c;--bb:rgba(38,32,52,.82);--bd:rgba(255,255,255,.14);--tx:#fff;--sf:#D0BDF4;--ac:linear-gradient(135deg,#E120E4,#C54FDA 50%,#9B0BE1);--me:#7a2bc4;--fs:16px}
 [data-t=light]{--bg:#f3ecfb;--bb:rgba(255,255,255,.9);--bd:rgba(0,0,0,.1);--tx:#1d1530;--sf:#6a4fa0;--me:#e3c9fb}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{font:15px Poppins,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--tx);height:100dvh;overflow:hidden}
+body{font:15px Poppins,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--tx);height:100dvh;overflow:hidden;-webkit-font-smoothing:antialiased}
 [hidden]{display:none!important}
 .i{width:22px;height:22px;fill:currentColor;flex:none}
 .scr{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);z-index:5}
@@ -23,19 +23,31 @@ small{opacity:.65;font-size:12px}
 .inp{width:100%;background:var(--bb);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;color:inherit;font:inherit;outline:0;margin:5px 0;user-select:text}
 .fi{flex:1;min-width:0;background:none;border:0;outline:0;color:inherit;font:inherit;font-weight:600;text-align:right}
 .btn{width:100%;border:0;border-radius:99px;padding:14px;color:#fff;background:var(--ac);font-weight:700;font-size:16px;font-family:inherit;cursor:pointer;margin-top:8px}
-#ms{flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:6px 0}
-.m{max-width:84%;padding:6px 10px;border-radius:16px;margin:2px 10px;font-size:var(--fs);word-break:break-word;border:1px solid var(--bd);user-select:text}
+
+/* Chat Area with 5 Backgrounds Support */
+#ms{
+  flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:6px 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transition: background-image .3s ease-in-out;
+}
+
+/* Text Selection Color */
+::selection{background:rgba(197,79,218,.5);color:inherit}
+
+.m{max-width:84%;padding:6px 10px;border-radius:16px;margin:2px 10px;font-size:var(--fs);word-break:break-word;border:1px solid var(--bd);user-select:text;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .me{align-self:flex-end;background:var(--me);border-bottom-right-radius:4px}.th{align-self:flex-start;background:var(--bb);border-bottom-left-radius:4px}
 .mt{display:flex;gap:4px;justify-content:flex-end;align-items:center;margin-top:2px}.mt .i{width:14px;height:14px}
 .em{width:1.3em;height:1.3em;vertical-align:-.3em}.big{width:96px;height:96px;animation:bn 2s ease-in-out infinite}
 @keyframes bn{50%{transform:scale(1.1) rotate(-4deg)}}
-.md{max-width:100%;max-height:300px;border-radius:12px;display:block}
+.md{max-width:100%;max-height:300px;border-radius:12px;display:block;object-fit:contain}
 .rp{border-left:3px solid #C54FDA;padding-left:6px;margin-bottom:4px;font-size:13px;opacity:.9}
 .rx{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}.rx span{background:var(--bd);border-radius:99px;padding:1px 7px;font-size:12px;cursor:pointer}
 .ul{color:#8fd0ff;cursor:pointer}
-.cmp{display:flex;gap:6px;align-items:flex-end;padding:8px}
+.cmp{display:flex;gap:6px;align-items:flex-end;padding:8px;background:var(--bg);border-top:1px solid var(--bd)}
 .cmp textarea{flex:1;max-height:120px;resize:none;border-radius:20px;padding:10px 14px;background:var(--bb);border:1px solid var(--bd);color:inherit;font:inherit;outline:0}
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10;backdrop-filter:blur(4px)}
 .bx{width:100%;max-width:360px;padding:18px;background:var(--bg)}.bx h3{margin-bottom:8px}.bx p{opacity:.8;margin-bottom:8px}
 .op{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;padding:12px 4px;font:inherit}
 .bt{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}.bt button{background:none;border:0;color:#C54FDA;font-weight:700;padding:8px 12px;font-size:15px}.bt .rd{color:#ff5b5b}
@@ -46,7 +58,7 @@ small{opacity:.65;font-size:12px}
 .dw{width:82%;max-width:330px;height:100%;background:var(--bg);overflow:auto;padding-top:env(safe-area-inset-top)}
 hr{border:0;border-top:1px solid var(--bd);margin:6px 0}
 .sec{margin:10px 0;padding:4px}
-.wps{display:flex;gap:8px;flex-wrap:wrap;padding:8px}.wps div{width:56px;height:80px;border-radius:12px;border:2px solid var(--bd)}
+.wps{display:flex;gap:8px;flex-wrap:wrap;padding:8px}.wps div{width:56px;height:80px;border-radius:12px;border:2px solid var(--bd);background-size:cover;background-position:center;cursor:pointer}
 
 /* ===== slime UI ===== */
 :root{--an:1;--t:calc(.4s*var(--an));--sp:cubic-bezier(.34,1.56,.64,1);--gl:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.03))}
@@ -99,7 +111,7 @@ b.sn{display:block}.hd .row{min-width:0;overflow:hidden}.hd .ib{flex:none}
 code{font-family:ui-monospace,Menlo,monospace;background:var(--bd);padding:1px 6px;border-radius:7px;font-size:.92em}
 .m b,.m i,.m s,.m u{display:inline}
 
-/* ===== v5: full-app animations (everything scales with the Animations slider) ===== */
+/* ===== v5: full-app animations ===== */
 .m:last-child{animation:none}.m.nw{animation:pop var(--t) var(--sp)}
 .rr{overflow-x:auto;justify-content:flex-start;gap:12px;padding:8px 6px;scrollbar-width:none}.rr::-webkit-scrollbar{display:none}.rr img{width:38px;flex:none}
 @keyframes fi{from{opacity:calc(1 - .9*var(--an))}}
@@ -158,3 +170,19 @@ blockquote{border-left:3px solid #C54FDA;padding:2px 8px;margin:2px 0;background
  .sheet{left:0;right:0;margin:0 auto;max-width:440px}
  #dr .dw{max-width:360px}
 }
+
+/* ===== v7: Additional Fixes ===== */
+/* Icons SVG fallback fix */
+img.si{object-fit:contain;}
+/* Ensure shared selection looks good */
+#cl .row[data-c] { transition: background-color 0.15s; }
+#cl .row.selected { background-color: rgba(197, 79, 218, 0.2); }
+/* Top bar fix for selection mode */
+.hd .ttl { font-size: 20px; font-weight: 600; }
+/* Smooth scroll for mobile */
+#ms, #cl, .dw {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+}
+/* Voice waveform height fix */
+.wv i { min-height: 3px; }
