@@ -27,12 +27,12 @@ const ANS=[0,.1,.5,.7,1],ANL=['Off','10%','50%','70%','100%'];
 const setAn=()=>{const v=S.st.an==null?4:S.st.an;document.documentElement.style.setProperty('--an',ANS[v]);document.documentElement.dataset.an=ANS[v]};
 const RE=[...'❤️👍👎🔥🥰👏😁🤔🤯😱🤬😢🎉🤩🤮💩🙏👌🕊️🤡🥱😍❤️‍🔥💯🤣⚡🏆💔💋😈😴😭😇🤝🤗🫡🆒💘😘🙈🙊🙉😎😡'.matchAll(EM)].map(m=>m[0]);
 // 5 Backgrounds implemented
-const WP=['url("bg/1.svg") center/cover','url("bg/2.svg") center/cover','url("bg/3.svg") center/cover','url("bg/4.svg") center/cover','url("bg/5.svg") center/cover'];
+const WP=['url("/bg/1.svg") center/cover','url("/bg/2.svg") center/cover','url("/bg/3.svg") center/cover','url("/bg/4.svg") center/cover','url("/bg/5.svg") center/cover'];
 const wp=()=>S.st.wu?`url("${S.st.wu}") center/cover`:WP[S.st.wp];
-const av=(u,z=46,saved)=>saved?`<span class="av" style="width:${z}px;height:${z}px;background:#2b7fc7">${ic('bm')}</span>`:u.avatar?`<img class="av" style="width:${z}px;height:${z}px" src="${esc(u.avatar)}">`:`<span class="av" style="width:${z}px;height:${z}px;background:hsl(${[...u.id].reduce((a,c)=>a+c.charCodeAt(0),0)*37%360},55%,45%)">${esc(ini(u.name))}</span>`;
+const av=(u,z=46,saved)=>saved?`<span class="av" style="width:${z}px;height:${z}px;background:#2b7fc7">${ic('bm')}</span>`:u.avatar?`<img class="av" style="width:${z}px;height:${z}px" src="${esc(u.avatar)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="av" style="display:none;width:${z}px;height:${z}px;background:hsl(${[...u.id].reduce((a,c)=>a+c.charCodeAt(0),0)*37%360},55%,45%)">${esc(ini(u.name))}</span>`:`<span class="av" style="width:${z}px;height:${z}px;background:hsl(${[...u.id].reduce((a,c)=>a+c.charCodeAt(0),0)*37%360},55%,45%)">${esc(ini(u.name))}</span>`;
 const avo=(u,z,sv)=>`<span class="avw">${av(u,z,sv)}${!sv&&u.status==='online'&&!u.sys?'<i class="od"></i>':''}</span>`;
 const TH=()=>S.st.t==='dark'?'white':'black';
-const si=(n,c)=>`<img class="si" data-n="${n}" src="app/${c||TH()}-${n}.svg" alt="" onerror="siFix(this)">`;
+const si=(n,c)=>`<img class="si" data-n="${n}" src="/app/${c||TH()}-${n}.svg" alt="" onerror="siFix(this)">`;
 function siFix(el){const n=el.dataset.n,m={read:()=>ic('ok')+ic('ok'),unread:()=>ic('ok'),pending:()=>ic('pend'),bold:()=>ic('bld'),italic:()=>ic('ita'),mono:()=>ic('mono'),strikethrough:()=>ic('str'),underline:()=>ic('und'),spoiler:()=>ic('spo'),sun:()=>ic('sun'),moon:()=>ic('moon')},w=document.createElement('span');w.className='sf';w.innerHTML=(m[n]||m.unread)();el.replaceWith(w)}
 const ini=n=>Array.from(n||'?').find(ch=>/[\p{L}\p{N}]/u.test(ch))||'?';
 const rw=(i,t,s,a)=>`<div class="row" ${a?`data-a="${a}"`:''}>${tl(i)}<div class="fx"><div>${t}</div>${s?`<small>${s}</small>`:''}</div></div>`;
@@ -59,7 +59,7 @@ code:`<p class="hint">Enter the 6-digit verification code sent to <b>${viaMode==
 fgc:'<p class="hint">Recovery code sent to your email</p>'+fld('lock','Email code','ac','tel')+'<button class="btn" id="go">Reset and login</button>',
 reg:fld('person','Name','an')+fld('mail','Email','ae','email')+fld('person','Username (optional)','au')+(needCode?fld('lock','Email code','ac','tel'):'')+`<button class="btn" id="go">${needCode?'Verify':'Create account'}</button>`,
 qr:'<div class="qrb"><div id="qrc"></div></div><p class="hint">On your logged-in phone open Settings → Privacy and security → Devices → Add Device, then scan this code</p>'}[step]);
-const draw=()=>{clearInterval(qt);$('#app').innerHTML=`<div class="scr" style="overflow:auto">${blobs}<div class="au"><button class="ib" id="bk" ${step==='home'&&!add?'hidden':''}>${ic('back')}</button><img class="logo" src="./icon-512.png" alt="MS Chat"><h1>MS Chat</h1>${body()}</div></div>`;
+const draw=()=>{clearInterval(qt);$('#app').innerHTML=`<div class="scr" style="overflow:auto">${blobs}<div class="au"><button class="ib" id="bk" ${step==='home'&&!add?'hidden':''}>${ic('back')}</button><img class="logo" src="/icon-512.png" alt="MS Chat"><h1>MS Chat</h1>${body()}</div></div>`;
 $('#bk').onclick=()=>{if(step==='home')boot();else{step='home';draw()}};
 document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{step=b.dataset.s;draw()});
 Object.entries(R).forEach(([k,v])=>{const e=$('#'+k);if(e)e.value=v});
@@ -91,11 +91,11 @@ const prev=m=>!m?'':mask(m.media?`[${m.media.type}] ${m.text||''}`:m.text);
 let RA=0;
 const row=(c,i)=>`<div class="row${RA?' ra':''}" style="--i:${Math.min(i,12)}" data-a="open" data-c="${c.chat}">${avo(c.peer,50,c.saved)}<div class="fx"><div class="r1"><b class="sn">${nm(ct(c))}${vt(c.peer)}</b><small style="display:flex;gap:5px;align-items:center">${c.last&&c.last.from===S.me.id&&!c.saved?si(c.last.id<=(c.rd||0)?'read':'unread'):''}${c.last?tm(c.last.ts):''}</small></div><div class="r1"><span class="sn">${rich(prev(c.last))}</span><span style="display:flex;gap:6px;align-items:center">${c.mute?ic('mute'):''}${c.unread?`<i class="bd">${c.unread}</i>`:''}</span></div></div></div>`;
 const cl=()=>{const e=$('#cl');if(e&&!$('#q').value)e.innerHTML=S.ch.map(row).join('')};
-function list(){RA=1;setTimeout(()=>RA=0,80);document.body.classList.add('inl');$('#app').innerHTML=`<div class="scr" id="lst"><div class="hd"><button class="ib" data-a="drawer">${ic('menu')}</button><b class="ttl fx">MS Chat</b><button class="ib" data-a="gs">${ic('search')}</button></div><div id="sb" hidden style="padding:0 12px"><input id="q" class="inp" placeholder="Search chats and messages" oninput="lsearch(this.value)"></div>${'Notification' in window&&Notification.permission==='default'?`<div class="row badge" data-a="pushon" style="margin:4px 10px">${tl('mute')}<div class="fx">Enable notifications</div></div>`:''}<div id="cl" style="overflow:auto;flex:1">${S.ch.map(row).join('')}</div></div>`}
+function list(){RA=1;setTimeout(()=>RA=0,80);document.body.classList.add('inl');$('#app').innerHTML=`<div class="scr" id="lst"><div class="hd"><button class="ib" data-a="drawer">${ic('menu')}</button><b class="ttl fx">MS Chat</b><button class="ib" data-a="gs">${ic('search')}</button></div><div id="sb" hidden style="padding:0 12px"><input id="q" class="inp" placeholder="Search chats and messages" oninput="lsearch(this.value)"></div>${'Notification' in window&&Notification.permission==='default'&&!localStorage.ms_noNotif?`<div class="row badge" data-a="pushon" style="margin:4px 10px">${tl('mute')}<div class="fx">Enable notifications</div></div>`:''}<div id="cl" style="overflow:auto;flex:1">${S.ch.map(row).join('')}</div></div>`}
 let st1;function lsearch(v){clearTimeout(st1);st1=setTimeout(async()=>{if(!v.trim())return cl2();const j=await api('/search?q='+E(v));$('#cl').innerHTML=(j.users||[]).map(u=>`<div class="row" data-a="ou" data-u="${esc(u.username)}">${av(u)}<div class="fx"><b>${nm(u.name)}</b><br><small>@${esc(u.username)}</small></div></div>`).join('')+(j.chats||[]).map(x=>{const c=S.ch.find(y=>y.chat===x.chat);return c?`<div class="row" data-a="open" data-c="${x.chat}">${av(c.peer,46,c.saved)}<div class="fx"><b>${nm(ct(c))}</b><div class="sn">${rich(mask(x.snippet))}</div></div></div>`:''}).join('')||'<p style="text-align:center;padding:24px;opacity:.6">No results</p>'},300)}
 const cl2=()=>{$('#cl').innerHTML=S.ch.map(row).join('')};
 Act.gs=()=>{const s=$('#sb');s.hidden=!s.hidden;if(s.hidden){$('#q').value='';cl2()}else $('#q').focus()};
-Act.pushon=async()=>{await MSNotify.askStorage();if((await MSNotify.permission())==='granted'){await MSNotify.registerDevice();toast('Notifications enabled')}list()};
+Act.pushon=async()=>{localStorage.ms_noNotif=1;await MSNotify.askStorage();if((await MSNotify.permission())==='granted'){await MSNotify.registerDevice();toast('Notifications enabled')}list()};
 Act.open=el=>{const c=S.ch.find(x=>x.chat===el.dataset.c);c&&openC(c)};
 Act.ou=el=>openUser(el.dataset.u);
 async function openUser(n){const j=await api('/user?u='+E(n));if(!ok(j))return;const o=S.ch.find(x=>x.chat===j.chat)||{mute:0};$('#pg').hidden=true;openC({...o,chat:j.chat,peer:j.user,cn:j.cn,saved:j.self,blocked:j.blocked})}
@@ -161,7 +161,7 @@ if(m.file){try{
       const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
       const newBlob = await upload(m.file.name, m.file, {
         access: 'public',
-        handleUploadUrl: API_BASE + '/upload', // Naye server par point kiya
+        handleUploadUrl: API_BASE + '/upload',
         clientPayload: S.ac[S.ai].token,
         onUploadProgress: (progressEvent) => {
           if (m.up !== progressEvent.percentage) {
@@ -260,7 +260,7 @@ Act.unblock=async()=>{await api('/block',{peer:S.cur.peer.id,block:false});S.cur
 Act.addc=async()=>{const c=S.cur,r=await dlg({t:c.cn?'Edit contact':'Add contact',in:'Name',v:c.cn||c.peer.name,o:c.cn?['Delete contact']:[],ok:'Done'});if(r.i===0){const d=await dlg({t:'Delete contact?',ok:'Delete',red:1});if(d.ok){await api('/contact',{peer:c.peer.id,del:1});c.cn=''}}else if(r.ok&&r.v.trim()){await api('/contact',{peer:c.peer.id,name:r.v.trim()});c.cn=r.v.trim()}$('#pg').hidden=true;S.pgs=[];drawC();drawMs()};
 Act.a2h=()=>{if(S.bip){S.bip.prompt()}else toast('Chrome menu → Add to Home screen (this chat link opens directly)')};
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();S.bip=e});
-Act.drawer=()=>{$('#dr').innerHTML=`<div class="dw"><div style="padding:16px;display:flex;justify-content:space-between;align-items:center"><img src="/icon-192.png" width="46" style="border-radius:50%"><button class="ib" data-a="theme"><img class="si" data-n="${S.st.t==='dark'?'sun':'moon'}" style="width:28px;height:28px;object-fit:contain" src="app/${S.st.t==='dark'?'sun':'moon'}.svg" alt="" onerror="siFix(this)"></button></div><div class="row" data-a="mypf">${av(S.me,56)}<div class="fx"><b class="sn">${nm(S.me.name)}</b><br><small>@${esc(S.me.username)}</small></div></div><hr>${S.ac.map((a,i)=>`<div class="row" data-a="acct" data-i="${i}"><span class="av" style="width:38px;height:38px;background:#7a2bc4">${esc(ini(a.name))}</span><div class="fx sn">${nm(a.name)}</div>${i===S.ai?ic('ok'):''}</div>`).join('')}${S.ac.length<5?rw('add','Add account','','addacc'):''}<hr>${rw('person','My Profile','','mypf')}${rw('bm','Saved Messages','','saved')}${rw('set','Settings','','setg')}${rw('anim','Animations','','anim')}${rw('img','Chat Settings','','chs')}${rw('lock','Privacy and Security','','prv')}</div>`;$('#dr').hidden=false};
+Act.drawer=()=>{$('#dr').innerHTML=`<div class="dw"><div style="padding:16px;display:flex;justify-content:space-between;align-items:center"><img src="/icon-192.png" width="46" style="border-radius:50%"><button class="ib" data-a="theme"><img class="si" data-n="${S.st.t==='dark'?'sun':'moon'}" style="width:28px;height:28px;object-fit:contain" src="/app/${S.st.t==='dark'?'sun':'moon'}.svg" alt="" onerror="siFix(this)"></button></div><div class="row" data-a="mypf">${av(S.me,56)}<div class="fx"><b class="sn">${nm(S.me.name)}</b><br><small>@${esc(S.me.username)}</small></div></div><hr>${S.ac.map((a,i)=>`<div class="row" data-a="acct" data-i="${i}"><span class="av" style="width:38px;height:38px;background:#7a2bc4">${esc(ini(a.name))}</span><div class="fx sn">${nm(a.name)}</div>${i===S.ai?ic('ok'):''}</div>`).join('')}${S.ac.length<5?rw('add','Add account','','addacc'):''}<hr>${rw('person','My Profile','','mypf')}${rw('bm','Saved Messages','','saved')}${rw('set','Settings','','setg')}${rw('anim','Animations','','anim')}${rw('img','Chat Settings','','chs')}${rw('lock','Privacy and Security','','prv')}</div>`;$('#dr').hidden=false};
 Act.theme=()=>{S.st.t=S.st.t==='dark'?'light':'dark';document.documentElement.dataset.t=S.st.t;sv();try{cl2();drawMs()}catch(e){}};
 Act.acct=el=>{S.ai=+el.dataset.i;sv();S.ni=1;boot()};
 Act.addacc=()=>authScr(1);
@@ -312,7 +312,6 @@ if (new URLSearchParams(location.search).has('shared')) {
   history.replaceState(null, '', '/'); // URL clean karo
   
   const checkBoot = setInterval(async () => {
-    // Jab tak S.me aur S.ch (chats) dono load na ho jayein, wait karein
     if (S.me && S.ch && S.ch.length >= 0) {
       clearInterval(checkBoot);
       
@@ -331,7 +330,6 @@ if (new URLSearchParams(location.search).has('shared')) {
           const files = req.result;
           if (!files || files.length === 0) return;
 
-          // Custom Modal for Share Target
           const d = $('#dlg');
           const validChats = S.ch.filter(c => c && c.chat && c.peer);
           
@@ -378,13 +376,11 @@ if (new URLSearchParams(location.search).has('shared')) {
   }, 500);
 }
 
-// File Upload & Send Function (From Share Menu)
 async function processSharedFiles(files, targetChat, store) {
   toast('Sending files...');
   for (const file of files) {
     const f = new File([file.blob], file.name, { type: file.type });
     
-    // Direct Vercel Blob Upload with Progress
     let url;
     try {
       const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
