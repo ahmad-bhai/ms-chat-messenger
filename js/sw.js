@@ -1,23 +1,28 @@
-/* MS Chat - sw.js
+/* MS Chat - js/sw.js
    Cache + notification display + notification actions (Reply / Mark as read / Mute) + deep link open + Share Target (Android). */
-const CACHE = 'ms-chat-v9'; // Version change kiya
-const ORIGIN = 'https://ms-chat-messager.vercel.app';
-const ICON = ORIGIN + '/icon-512.png';
-const BADGE = ORIGIN + '/icon-192.png';
+const CACHE = 'ms-chat-v10'; // Version bump (naye paths aur server ke liye)
+const SERVER_URL = 'https://server-ms-chat.vercel.app'; // Backend domain
+const API_BASE = SERVER_URL + '/api';
+const ORIGIN = self.location.origin; // Frontend ka current domain
+const ICON = SERVER_URL + '/icon-512.png'; // Backend se load hoga
+const BADGE = SERVER_URL + '/icon-192.png';
+const EMOJI_HOST = 'magic-scripts-emojis.vercel.app';
+
+// Sahi paths (js/ aur app/ folders ke mutabiq)
 const SHELL = [
   '/', 
   '/index.html', 
   '/manifest.json', 
-  '/notification.js', 
-  '/style.css', 
-  '/app.js', 
-  '/media.js', 
-  '/chats.js', 
+  '/js/notification.js', 
+  '/css/style.css', 
+  '/js/app.js', 
+  '/js/media.js', 
+  '/js/chats.js', 
   '/api.html',
+  '/app/white-read.svg',
   '/icon-192.png', 
   '/icon-512.png'
-]; // api.html added
-const EMOJI_HOST = 'magic-scripts-emojis.vercel.app';
+];
 
 /* ---------- tiny IndexedDB key-value (stores auth token for notification actions) ---------- */
 function idb() {
@@ -49,7 +54,7 @@ function shareDb() {
 
 /* ---------- lifecycle ---------- */
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch((err) => console.warn('Cache add failed', err))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(
@@ -63,7 +68,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
 
-  // 1. Share Target API (Badi files aur multiple files handle karne ke liye)
+  // 1. Share Target API
   if (url.pathname === '/share-target/' && req.method === 'POST') {
     e.respondWith(handleShare(req));
     return;
@@ -72,8 +77,8 @@ self.addEventListener('fetch', e => {
   // 2. Baaki normal fetch requests
   if (req.method !== 'GET') return;
 
-  // Emoji images: cache-first (they never change)
-  if (url.hostname === EMOJI_HOST) {
+  // Emoji images: cache-first
+  if (url.hostname === EMOJI_HOST || url.pathname.startsWith('/api/emoji')) {
     e.respondWith(caches.open(CACHE).then(async c => {
       const hit = await c.match(req);
       if (hit) return hit;
@@ -82,9 +87,11 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
+  
+  // External URLs (jaise backend) ignore karein
   if (url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
-  if (/\.(mp4|webm|mp3|ogg|m4a|wav)$/i.test(url.pathname) && url.pathname !== '/notification.mp3') return;
+  if (/\.(mp4|webm|mp3|ogg|m4a|wav)$/i.test(url.pathname) && url.pathname !== '/js/notification.mp3') return;
 
   // Pages: network-first, fallback to cached shell
   if (req.mode === 'navigate') {
@@ -115,7 +122,6 @@ async function handleShare(request) {
       const store = tx.objectStore('shared_files');
 
       for (const file of files) {
-        // File save karein IndexedDB mein
         store.add({
           name: file.name,
           type: file.type,
@@ -130,7 +136,6 @@ async function handleShare(request) {
     console.error('Share Target Error:', err);
   }
   
-  // File save hone ke baad app ko redirect karein
   return Response.redirect('/?shared=true', 303);
 }
 
@@ -141,7 +146,7 @@ self.addEventListener('message', e => {
   if (m.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-/* ---------- show notification (called by firebase-messaging-sw.js) ---------- */
+/* ---------- show notification ---------- */
 self.showMsgNotification = function (d) {
   d = d || {};
   const chatId = d.chatId || 'ms-chat';
@@ -171,7 +176,8 @@ async function callAction(body) {
   const token = await kvGet('token');
   if (!token) return null;
   try {
-    const r = await fetch('/api/notif/action', {
+    // Naye server URL par action bhejein
+    const r = await fetch(API_BASE + '/notif/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
       body: JSON.stringify(body)
@@ -204,7 +210,7 @@ self.addEventListener('notificationclick', e => {
     const text = (e.reply || '').trim();
     if (!text) { e.waitUntil(openChat(data.chatId, data.msgId)); return; }
     e.waitUntil(callAction({ action: 'reply', chatId: data.chatId, text }).then(res => {
-      if (!res || !res.ok) return openChat(data.chatId, data.msgId); // not logged in / failed -> open app
+      if (!res || !res.ok) return openChat(data.chatId, data.msgId);
     }));
     return;
   }
@@ -221,6 +227,5 @@ self.addEventListener('notificationclick', e => {
       .then(cs => cs.forEach(c => c.postMessage({ type: 'NOTIF_ACTION', action: 'mute', chatId: data.chatId, until }))));
     return;
   }
-  // Plain tap: open that exact chat/message
   e.waitUntil(openChat(data.chatId, data.msgId));
 });
