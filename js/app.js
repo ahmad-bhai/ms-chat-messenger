@@ -1,4 +1,4 @@
-// MS Chat - Open Source Frontend (Fixed)
+// MS Chat - Open Source Frontend (FINAL FIXED)
 const API_BASE = 'https://server-ms-chat.vercel.app/api';
 const $=s=>document.querySelector(s),E=encodeURIComponent;
 const D=(k,d)=>{try{return JSON.parse(localStorage[k])||d}catch(e){return d}};
@@ -38,7 +38,7 @@ const rw=(i,t,s,a)=>`<div class="row" ${a?`data-a="${a}"`:''}>${tl(i)}<div class
 const it=(i,t,a,red)=>`<div class="it${red?' red':''}" data-a="${a}">${ic(i)}${t}</div>`;
 let tt;const toast=t=>{$('#ts').innerHTML=`<div class="tt">${t}</div>`;clearTimeout(tt);tt=setTimeout(()=>$('#ts').innerHTML='',2600)};
 
-// ================= FIXED api() with retry & token check =================
+// ================= api() with retry & token check =================
 async function api(p, b, retry = 0) {
   const token = (S.ac[S.ai] || {}).token;
   if (!token || token === 'undefined') {
@@ -182,22 +182,28 @@ Act.spo=el=>{const a=el.querySelector('.sh'),b=el.querySelector('.sv');if(!a||!b
 Act.repl=()=>{S.fm='rep';fl.accept='*/*';fl.removeAttribute('capture');fl.multiple=false;fl.click()};
 const tdraw=()=>{if(S.td)return;S.td=setTimeout(()=>{S.td=0;drawMs()},250)};
 
-// ============ SUPABASE UPLOAD LOGIC (FIXED - NO Content-Type header) ============
+// ============ SUPABASE UPLOAD LOGIC (FINAL FIXED WITH CONTENT-TYPE) ============
 async function flush(){if(S.fl)return;S.fl=1;try{while(OB.length){const m=OB[0];
 if(m.file){try{
   const url = await new Promise(async (resolve, reject) => {
     try {
       const filename = `${m.file.name.replace(/[^\w.\-]/g, '_')}`;
+      const token = (S.ac[S.ai] || {}).token;
+      if (!token || token === 'undefined') throw new Error('Session expired');
+      
       const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
         method: 'POST',
         headers: { 
-          'Authorization': 'Bearer ' + S.ac[S.ai].token
-          // Content-Type NAHI likhna - browser khud set karega
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/octet-stream'  // MUST for Vercel
         },
         body: m.file
       });
+      
       const data = await res.json();
-      if (data.err) throw new Error(data.err);
+      if (!res.ok || data.err) throw new Error(data.err || `HTTP ${res.status}`);
+      if (!data.url) throw new Error('No URL returned');
+      
       resolve(data.url);
     } catch (err) { reject(err); }
   });
@@ -326,7 +332,7 @@ Act.delacc=async()=>{const j=await api('/account/delete-start',{});if(j.err==='s
 Act.anim=()=>{const v=S.st.an==null?4:S.st.an;page('Animations',`<div class="badge sec" style="padding:18px"><b>Animation intensity</b><input type="range" min="0" max="4" step="1" value="${v}" style="width:100%;margin:18px 0 6px" oninput="S.st.an=+this.value;setAn();sv();$('#al').textContent=ANL[this.value]"><div style="display:flex;justify-content:space-between"><small>Off</small><small>10%</small><small>50%</small><small>70%</small><small>100%</small></div><p id="al" style="text-align:center;font-weight:700;margin-top:12px">${ANL[v]}</p></div><div class="badge sec" style="padding:18px;text-align:center"><div class="jelly"></div><small>Preview</small></div>`)};
 Act.ptest=async()=>{if((await MSNotify.permission())!=='granted')return toast('Allow notifications first');await MSNotify.registerDevice();const j=await MSNotify.test();toast(esc(j.err||(j.ok?'Test sent. Minimise the app to see it.':'Failed: '+(j.codes||[]).join(','))))};
 
-/* ---------- realtime (polling - FIXED with error handling) ---------- */
+/* ---------- realtime (polling) ---------- */
 let pollBusy = false;
 async function poll() {
   if (pollBusy || !S.me || !S.ac[S.ai]) return;
@@ -370,7 +376,7 @@ boot();
 addEventListener('keydown',e=>{if(e.key==='Escape'&&S.cur&&!$('#dlg').innerHTML&&$('#sh').hidden)Act.back()});
 
 /* =========================================================
-   SHARE TARGET (FIXED - NO Content-Type header)
+   SHARE TARGET (FIXED - WITH Content-Type header)
    ========================================================= */
 if (new URLSearchParams(location.search).has('shared')) {
   history.replaceState(null, '', '/');
@@ -432,6 +438,11 @@ if (new URLSearchParams(location.search).has('shared')) {
 
 async function processSharedFiles(files, targetChat, store) {
   toast('Sending files...');
+  const token = (S.ac[S.ai] || {}).token;
+  if (!token || token === 'undefined') {
+    toast('Session expired');
+    return;
+  }
   for (const file of files) {
     const f = new File([file.blob], file.name, { type: file.type });
     let url;
@@ -439,11 +450,15 @@ async function processSharedFiles(files, targetChat, store) {
       const filename = `${f.name.replace(/[^\w.\-]/g, '_')}`;
       const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + S.ac[S.ai].token },
+        headers: { 
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/octet-stream'  // MUST for Vercel
+        },
         body: f
       });
       const data = await res.json();
-      if (data.err) throw new Error(data.err);
+      if (!res.ok || data.err) throw new Error(data.err || `HTTP ${res.status}`);
+      if (!data.url) throw new Error('No URL returned');
       url = data.url;
     } catch (e) { toast('Upload failed: ' + e.message); continue; }
     if (url) {
