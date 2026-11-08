@@ -1,3 +1,5 @@
+// MS Chat - Open Source Frontend
+const API_BASE = 'https://server-ms-chat.vercel.app/api';
 const $=s=>document.querySelector(s),E=encodeURIComponent;
 const D=(k,d)=>{try{return JSON.parse(localStorage[k])||d}catch(e){return d}};
 const S={ac:D('ms_a',[]),ai:+localStorage.ms_ai||0,ch:[],ms:[],cur:null,v:0,me:null,pin:null,pr:0,pgs:[],st:D('ms_s',{fs:16,wp:0,wu:'',t:'dark'})};
@@ -6,7 +8,7 @@ const I={moon:'M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 01-4.4 2.26 5
 const ic=n=>`<svg class="i" viewBox="0 0 24 24"><path d="${I[n]}"/></svg>`,tl=n=>`<span class="tile">${ic(n)}</span>`;
 const EMS='(\\p{Extended_Pictographic}(?:\\uFE0F|\\u200D\\p{Extended_Pictographic}|\\p{Emoji_Modifier})*|[\\u{1F1E6}-\\u{1F1FF}]{2})';
 const EM=new RegExp(EMS,'gu'),BIG=new RegExp('^'+EMS+'$','u');
-const eu=e=>'/api/emoji?name='+E(e);
+const eu=e=>API_BASE+'/emoji?name='+E(e);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const nm=s=>esc(s).replace(EM,e=>`<img class="em" src="${eu(e)}" alt="${e}">`);
 const fm=s=>s.replace(/(?<=^|\n)&gt; ?([^\n]*)\n?/g,'<blockquote>$1</blockquote>').replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/\*\*([\s\S]+?)\*\*/g,'<b>$1</b>').replace(/__([\s\S]+?)__/g,'<i>$1</i>').replace(/~~([\s\S]+?)~~/g,'<s>$1</s>').replace(/\+\+([\s\S]+?)\+\+/g,'<u>$1</u>').replace(/\|\|([\s\S]+?)\|\|/g,'<span class="spo" data-a="spo">$1</span>');
@@ -24,18 +26,19 @@ const setMr=()=>document.documentElement.style.setProperty('--mr',(S.st.mr==null
 const ANS=[0,.1,.5,.7,1],ANL=['Off','10%','50%','70%','100%'];
 const setAn=()=>{const v=S.st.an==null?4:S.st.an;document.documentElement.style.setProperty('--an',ANS[v]);document.documentElement.dataset.an=ANS[v]};
 const RE=[...'❤️👍👎🔥🥰👏😁🤔🤯😱🤬😢🎉🤩🤮💩🙏👌🕊️🤡🥱😍❤️‍🔥💯🤣⚡🏆💔💋😈😴😭😇🤝🤗🫡🆒💘😘🙈🙊🙉😎😡'.matchAll(EM)].map(m=>m[0]);
-const WP=['linear-gradient(160deg,#1b1233,#3a1c5e)','linear-gradient(160deg,#0f2027,#2c5364)','linear-gradient(160deg,#42275a,#734b6d)','linear-gradient(160deg,#134e5e,#71b280)','linear-gradient(160deg,#232526,#414345)'];
+// 5 Backgrounds implemented
+const WP=['url("bg/1.svg") center/cover','url("bg/2.svg") center/cover','url("bg/3.svg") center/cover','url("bg/4.svg") center/cover','url("bg/5.svg") center/cover'];
 const wp=()=>S.st.wu?`url("${S.st.wu}") center/cover`:WP[S.st.wp];
 const av=(u,z=46,saved)=>saved?`<span class="av" style="width:${z}px;height:${z}px;background:#2b7fc7">${ic('bm')}</span>`:u.avatar?`<img class="av" style="width:${z}px;height:${z}px" src="${esc(u.avatar)}">`:`<span class="av" style="width:${z}px;height:${z}px;background:hsl(${[...u.id].reduce((a,c)=>a+c.charCodeAt(0),0)*37%360},55%,45%)">${esc(ini(u.name))}</span>`;
 const avo=(u,z,sv)=>`<span class="avw">${av(u,z,sv)}${!sv&&u.status==='online'&&!u.sys?'<i class="od"></i>':''}</span>`;
 const TH=()=>S.st.t==='dark'?'white':'black';
-const si=(n,c)=>`<img class="si" data-n="${n}" src="/${c||TH()}-${n}.svg" alt="" onerror="siFix(this)">`;
+const si=(n,c)=>`<img class="si" data-n="${n}" src="app/${c||TH()}-${n}.svg" alt="" onerror="siFix(this)">`;
 function siFix(el){const n=el.dataset.n,m={read:()=>ic('ok')+ic('ok'),unread:()=>ic('ok'),pending:()=>ic('pend'),bold:()=>ic('bld'),italic:()=>ic('ita'),mono:()=>ic('mono'),strikethrough:()=>ic('str'),underline:()=>ic('und'),spoiler:()=>ic('spo'),sun:()=>ic('sun'),moon:()=>ic('moon')},w=document.createElement('span');w.className='sf';w.innerHTML=(m[n]||m.unread)();el.replaceWith(w)}
 const ini=n=>Array.from(n||'?').find(ch=>/[\p{L}\p{N}]/u.test(ch))||'?';
 const rw=(i,t,s,a)=>`<div class="row" ${a?`data-a="${a}"`:''}>${tl(i)}<div class="fx"><div>${t}</div>${s?`<small>${s}</small>`:''}</div></div>`;
 const it=(i,t,a,red)=>`<div class="it${red?' red':''}" data-a="${a}">${ic(i)}${t}</div>`;
 let tt;const toast=t=>{$('#ts').innerHTML=`<div class="tt">${t}</div>`;clearTimeout(tt);tt=setTimeout(()=>$('#ts').innerHTML='',2600)};
-async function api(p,b){const r=await fetch('/api'+p,{method:b?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(S.ac[S.ai]||{}).token},body:b?JSON.stringify(b):undefined});if(r.status===401&&S.me){localLogout();return{}}return r.json().catch(()=>({}))}
+async function api(p,b){const r=await fetch(API_BASE+p,{method:b?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(S.ac[S.ai]||{}).token},body:b?JSON.stringify(b):undefined});if(r.status===401&&S.me){localLogout();return{}}return r.json().catch(()=>({}))}
 const ok=j=>{if(j.err){toast(esc(j.err));return false}return true};
 function dlg(o){return new Promise(res=>{const d=$('#dlg');d.innerHTML=`<div class="ov"><div class="badge bx"><h3>${o.t}</h3>${o.p?`<p>${o.p}</p>`:''}${o.in?`<input id="di" class="inp" type="${o.ty||'text'}" placeholder="${o.in}" value="${esc(o.v||'')}">`:''}${o.cb?`<label class="cb"><input type="checkbox" id="dc">${o.cb}</label>`:''}${(o.o||[]).map((x,i)=>`<button class="op" data-i="${i}">${x}</button>`).join('')}<div class="bt">${o.nc?'':'<button data-i="-1">Cancel</button>'}${o.ok?`<button class="${o.red?'rd':''}" data-i="-2">${o.ok}</button>`:''}</div></div></div>`;d.onclick=e=>{const b=e.target.closest('button'),bg=e.target.classList.contains('ov');if(!b&&!bg)return;const i=b?+b.dataset.i:-1,v=$('#di')&&$('#di').value,cb=!!($('#dc')&&$('#dc').checked);d.innerHTML='';res({ok:i===-2,i:i>=0?i:-1,cb,v})};const x=$('#di');x&&x.focus()})}
 const ask=async(t,ph='Password',ty='password')=>{const r=await dlg({t,in:ph,ty,ok:'OK'});return r.ok&&r.v?r.v:null};
@@ -150,16 +153,15 @@ Act.spo=el=>{const a=el.querySelector('.sh'),b=el.querySelector('.sv');if(!a||!b
 Act.repl=()=>{S.fm='rep';fl.accept='*/*';fl.removeAttribute('capture');fl.multiple=false;fl.click()};
 const tdraw=()=>{if(S.td)return;S.td=setTimeout(()=>{S.td=0;drawMs()},250)};
 
-// VERCEL BLOB UPLOAD LOGIC
+// VERCEL BLOB UPLOAD LOGIC (Connected to new server)
 async function flush(){if(S.fl)return;S.fl=1;try{while(OB.length){const m=OB[0];
 if(m.file){try{
-  // Upload with progress
   const url = await new Promise(async (resolve, reject) => {
     try {
       const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
       const newBlob = await upload(m.file.name, m.file, {
         access: 'public',
-        handleUploadUrl: '/api/upload',
+        handleUploadUrl: API_BASE + '/upload', // Naye server par point kiya
         clientPayload: S.ac[S.ai].token,
         onUploadProgress: (progressEvent) => {
           if (m.up !== progressEvent.percentage) {
@@ -207,7 +209,7 @@ async function fbInit(){if(FB&&FB.uid===S.me.id)return FB;const V='https://www.g
 const app=A.getApps().find(a=>a.name==='ms')||A.initializeApp({apiKey:'AIzaSyD7Nt1wwgGy5GxKFrc1NQvv8ulA3fDSJQE',authDomain:'ms-chat-517b8.firebaseapp.com',projectId:'ms-chat-517b8',storageBucket:'ms-chat-517b8.firebasestorage.app',appId:'1:34240289213:web:d9f18bcfa824bbac5e1ad4'},'ms');
 const t=await api('/fb/token',{});if(!t.token)throw new Error(t.err||'No Firebase token');await Au.signInWithCustomToken(Au.getAuth(app),t.token);FB={uid:S.me.id,st:St.getStorage(app),St};return FB}
 function fbUp(f,onp){return fbInit().then(x=>new Promise((res,rej)=>{const S2=x.St,r=S2.ref(x.st,`u/${S.me.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g,'_')}`),t=S2.uploadBytesResumable(r,f,{contentType:f.type||'application/octet-stream'});t.on('state_changed',z=>onp&&onp(Math.round(z.bytesTransferred/z.totalBytes*100)),rej,async()=>res(await S2.getDownloadURL(t.snapshot.ref)))}))}
-async function upload2(f,onp){let err;try{return await fbUp(f,onp)}catch(e){err=e}if(f.size<4e6){try{const r=await fetch('/api/put?name='+E(f.name)+'&type='+E(f.type||'application/octet-stream'),{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:'Bearer '+S.ac[S.ai].token},body:f});const j=await r.json();if(j.url)return j.url}catch(e){}}throw err}
+async function upload2(f,onp){let err;try{return await fbUp(f,onp)}catch(e){err=e}if(f.size<4e6){try{const r=await fetch(API_BASE+'/put?name='+E(f.name)+'&type='+E(f.type||'application/octet-stream'),{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:'Bearer '+S.ac[S.ai].token},body:f});const j=await r.json();if(j.url)return j.url}catch(e){}}throw err}
 async function up(f,type){if(f.size>5*1024**3){toast('Max file size is 5 GB');return null}toast('Uploading…');try{const url=await upload2(f,p=>toast('Uploading '+p+'%'));return{url,name:f.name,size:f.size,type:type||(f.type.startsWith('image')?'image':f.type.startsWith('video')?'video':f.type.startsWith('audio')?'audio':'file')}}catch(e){toast(esc('Upload failed: '+(e.code||e.message)));return null}}
 const fl=$('#fl');
 const isMed=f=>/^(image|video)\//.test(f.type);
@@ -258,7 +260,7 @@ Act.unblock=async()=>{await api('/block',{peer:S.cur.peer.id,block:false});S.cur
 Act.addc=async()=>{const c=S.cur,r=await dlg({t:c.cn?'Edit contact':'Add contact',in:'Name',v:c.cn||c.peer.name,o:c.cn?['Delete contact']:[],ok:'Done'});if(r.i===0){const d=await dlg({t:'Delete contact?',ok:'Delete',red:1});if(d.ok){await api('/contact',{peer:c.peer.id,del:1});c.cn=''}}else if(r.ok&&r.v.trim()){await api('/contact',{peer:c.peer.id,name:r.v.trim()});c.cn=r.v.trim()}$('#pg').hidden=true;S.pgs=[];drawC();drawMs()};
 Act.a2h=()=>{if(S.bip){S.bip.prompt()}else toast('Chrome menu → Add to Home screen (this chat link opens directly)')};
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();S.bip=e});
-Act.drawer=()=>{$('#dr').innerHTML=`<div class="dw"><div style="padding:16px;display:flex;justify-content:space-between;align-items:center"><img src="/icon-192.png" width="46" style="border-radius:50%"><button class="ib" data-a="theme"><img class="si" data-n="${S.st.t==='dark'?'sun':'moon'}" style="width:28px;height:28px;object-fit:contain" src="/${S.st.t==='dark'?'sun':'moon'}.svg" alt="" onerror="siFix(this)"></button></div><div class="row" data-a="mypf">${av(S.me,56)}<div class="fx"><b class="sn">${nm(S.me.name)}</b><br><small>@${esc(S.me.username)}</small></div></div><hr>${S.ac.map((a,i)=>`<div class="row" data-a="acct" data-i="${i}"><span class="av" style="width:38px;height:38px;background:#7a2bc4">${esc(ini(a.name))}</span><div class="fx sn">${nm(a.name)}</div>${i===S.ai?ic('ok'):''}</div>`).join('')}${S.ac.length<5?rw('add','Add account','','addacc'):''}<hr>${rw('person','My Profile','','mypf')}${rw('bm','Saved Messages','','saved')}${rw('set','Settings','','setg')}${rw('anim','Animations','','anim')}${rw('img','Chat Settings','','chs')}${rw('lock','Privacy and Security','','prv')}</div>`;$('#dr').hidden=false};
+Act.drawer=()=>{$('#dr').innerHTML=`<div class="dw"><div style="padding:16px;display:flex;justify-content:space-between;align-items:center"><img src="/icon-192.png" width="46" style="border-radius:50%"><button class="ib" data-a="theme"><img class="si" data-n="${S.st.t==='dark'?'sun':'moon'}" style="width:28px;height:28px;object-fit:contain" src="app/${S.st.t==='dark'?'sun':'moon'}.svg" alt="" onerror="siFix(this)"></button></div><div class="row" data-a="mypf">${av(S.me,56)}<div class="fx"><b class="sn">${nm(S.me.name)}</b><br><small>@${esc(S.me.username)}</small></div></div><hr>${S.ac.map((a,i)=>`<div class="row" data-a="acct" data-i="${i}"><span class="av" style="width:38px;height:38px;background:#7a2bc4">${esc(ini(a.name))}</span><div class="fx sn">${nm(a.name)}</div>${i===S.ai?ic('ok'):''}</div>`).join('')}${S.ac.length<5?rw('add','Add account','','addacc'):''}<hr>${rw('person','My Profile','','mypf')}${rw('bm','Saved Messages','','saved')}${rw('set','Settings','','setg')}${rw('anim','Animations','','anim')}${rw('img','Chat Settings','','chs')}${rw('lock','Privacy and Security','','prv')}</div>`;$('#dr').hidden=false};
 Act.theme=()=>{S.st.t=S.st.t==='dark'?'light':'dark';document.documentElement.dataset.t=S.st.t;sv();try{cl2();drawMs()}catch(e){}};
 Act.acct=el=>{S.ai=+el.dataset.i;sv();S.ni=1;boot()};
 Act.addacc=()=>authScr(1);
@@ -388,7 +390,7 @@ async function processSharedFiles(files, targetChat, store) {
       const { upload } = await import('https://esm.sh/@vercel/blob@0.27.0/client');
       const newBlob = await upload(f.name, f, {
         access: 'public',
-        handleUploadUrl: '/api/upload',
+        handleUploadUrl: API_BASE + '/upload',
         clientPayload: S.ac[S.ai].token
       });
       url = newBlob.url;
