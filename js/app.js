@@ -1,4 +1,4 @@
-// MS Chat - Open Source Frontend
+// MS Chat - Open Source Frontend (Fixed)
 const API_BASE = 'https://server-ms-chat.vercel.app/api';
 const $=s=>document.querySelector(s),E=encodeURIComponent;
 const D=(k,d)=>{try{return JSON.parse(localStorage[k])||d}catch(e){return d}};
@@ -37,7 +37,37 @@ const ini=n=>Array.from(n||'?').find(ch=>/[\p{L}\p{N}]/u.test(ch))||'?';
 const rw=(i,t,s,a)=>`<div class="row" ${a?`data-a="${a}"`:''}>${tl(i)}<div class="fx"><div>${t}</div>${s?`<small>${s}</small>`:''}</div></div>`;
 const it=(i,t,a,red)=>`<div class="it${red?' red':''}" data-a="${a}">${ic(i)}${t}</div>`;
 let tt;const toast=t=>{$('#ts').innerHTML=`<div class="tt">${t}</div>`;clearTimeout(tt);tt=setTimeout(()=>$('#ts').innerHTML='',2600)};
-async function api(p,b){const r=await fetch(API_BASE+p,{method:b?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(S.ac[S.ai]||{}).token},body:b?JSON.stringify(b):undefined});if(r.status===401&&S.me){localLogout();return{}}return r.json().catch(()=>({}))}
+
+// ================= FIXED api() with retry & token check =================
+async function api(p, b, retry = 0) {
+  const token = (S.ac[S.ai] || {}).token;
+  if (!token || token === 'undefined') {
+    console.warn('No token for API call:', p);
+    return { err: 'Please login again' };
+  }
+  try {
+    const r = await fetch(API_BASE + p, {
+      method: b ? 'POST' : 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: b ? JSON.stringify(b) : undefined
+    });
+    if (r.status === 401) {
+      if (retry === 0 && S.me) {
+        await new Promise(res => setTimeout(res, 500));
+        return api(p, b, 1);
+      }
+      if (S.me) localLogout();
+      return {};
+    }
+    return r.json().catch(() => ({}));
+  } catch (e) {
+    if (retry === 0) {
+      await new Promise(res => setTimeout(res, 1000));
+      return api(p, b, 1);
+    }
+    return { err: e.message };
+  }
+}
 const ok=j=>{if(j.err){toast(esc(j.err));return false}return true};
 function dlg(o){return new Promise(res=>{const d=$('#dlg');d.innerHTML=`<div class="ov"><div class="badge bx"><h3>${o.t}</h3>${o.p?`<p>${o.p}</p>`:''}${o.in?`<input id="di" class="inp" type="${o.ty||'text'}" placeholder="${o.in}" value="${esc(o.v||'')}">`:''}${o.cb?`<label class="cb"><input type="checkbox" id="dc">${o.cb}</label>`:''}${(o.o||[]).map((x,i)=>`<button class="op" data-i="${i}">${x}</button>`).join('')}<div class="bt">${o.nc?'':'<button data-i="-1">Cancel</button>'}${o.ok?`<button class="${o.red?'rd':''}" data-i="-2">${o.ok}</button>`:''}</div></div></div>`;d.onclick=e=>{const b=e.target.closest('button'),bg=e.target.classList.contains('ov');if(!b&&!bg)return;const i=b?+b.dataset.i:-1,v=$('#di')&&$('#di').value,cb=!!($('#dc')&&$('#dc').checked);d.innerHTML='';res({ok:i===-2,i:i>=0?i:-1,cb,v})};const x=$('#di');x&&x.focus()})}
 const ask=async(t,ph='Password',ty='password')=>{const r=await dlg({t,in:ph,ty,ok:'OK'});return r.ok&&r.v?r.v:null};
@@ -152,24 +182,19 @@ Act.spo=el=>{const a=el.querySelector('.sh'),b=el.querySelector('.sv');if(!a||!b
 Act.repl=()=>{S.fm='rep';fl.accept='*/*';fl.removeAttribute('capture');fl.multiple=false;fl.click()};
 const tdraw=()=>{if(S.td)return;S.td=setTimeout(()=>{S.td=0;drawMs()},250)};
 
-// ============ SUPABASE UPLOAD LOGIC (FIXED) ============
+// ============ SUPABASE UPLOAD LOGIC (FIXED - NO Content-Type header) ============
 async function flush(){if(S.fl)return;S.fl=1;try{while(OB.length){const m=OB[0];
 if(m.file){try{
   const url = await new Promise(async (resolve, reject) => {
     try {
       const filename = `${m.file.name.replace(/[^\w.\-]/g, '_')}`;
-      
-      // FormData use kar rahe hain taake Authorization header properly jaye
-      const formData = new FormData();
-      formData.append('file', m.file);
-      
       const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
         method: 'POST',
         headers: { 
           'Authorization': 'Bearer ' + S.ac[S.ai].token
-          // Content-Type nahi likhna, browser khud set karega (multipart/form-data)
+          // Content-Type NAHI likhna - browser khud set karega
         },
-        body: formData
+        body: m.file
       });
       const data = await res.json();
       if (data.err) throw new Error(data.err);
@@ -252,6 +277,7 @@ Act.unm=async()=>{await api('/chat/mute',{chat:cid(),until:0});S.cur.mute=0;toas
 Act.mu=async()=>{const r=await dlg({t:'Mute',o:['Disable sound','Mute for…','Mute forever']});if(r.i<0)return;let u=-2,msg='Sound disabled';if(r.i===1){const d=await dlg({t:'Mute for',o:['1 hour','8 hours','2 days','7 days']});if(d.i<0)return;u=Date.now()+[1,8,48,168][d.i]*36e5;msg='Muted for '+['1 hour','8 hours','2 days','7 days'][d.i]}if(r.i===2){u=-1;msg='Muted forever'}await api('/chat/mute',{chat:cid(),until:u});S.cur.mute=u;toast(msg)};
 Act.clr=async()=>{const c=S.cur,r=await dlg({t:'Clear chat?',cb:c.saved?'':`also delete for ${nm(ct(c))}`,ok:'Clear',red:1});if(r.ok){await api('/chat/clear',{chat:cid(),both:r.cb});S.ms=[];drawMs()}};
 Act.dch=async()=>{const c=S.cur,r=await dlg({t:'Delete chat?',cb:c.saved?'':`also delete for ${nm(ct(c))}`,ok:'Delete',red:1});if(r.ok){await api('/chat/delete',{chat:cid(),both:r.cb});Act.back()}};
+
 /* ---------- pages ---------- */
 function page(t,h,right){const p=$('#pg');if(!p.hidden)S.pgs.push(p.innerHTML);p.hidden=false;p.innerHTML=`<div class="hd"><button class="ib" data-a="pback">${ic('back')}</button><b class="ttl fx">${t}</b>${right||''}</div><div style="overflow:auto;flex:1;padding:0 10px 20px">${h}</div>`}
 Act.pback=()=>{const p=$('#pg');if(S.pgs.length)p.innerHTML=S.pgs.pop();else p.hidden=true};
@@ -300,41 +326,71 @@ Act.delacc=async()=>{const j=await api('/account/delete-start',{});if(j.err==='s
 Act.anim=()=>{const v=S.st.an==null?4:S.st.an;page('Animations',`<div class="badge sec" style="padding:18px"><b>Animation intensity</b><input type="range" min="0" max="4" step="1" value="${v}" style="width:100%;margin:18px 0 6px" oninput="S.st.an=+this.value;setAn();sv();$('#al').textContent=ANL[this.value]"><div style="display:flex;justify-content:space-between"><small>Off</small><small>10%</small><small>50%</small><small>70%</small><small>100%</small></div><p id="al" style="text-align:center;font-weight:700;margin-top:12px">${ANL[v]}</p></div><div class="badge sec" style="padding:18px;text-align:center"><div class="jelly"></div><small>Preview</small></div>`)};
 Act.ptest=async()=>{if((await MSNotify.permission())!=='granted')return toast('Allow notifications first');await MSNotify.registerDevice();const j=await MSNotify.test();toast(esc(j.err||(j.ok?'Test sent. Minimise the app to see it.':'Failed: '+(j.codes||[]).join(','))))};
 
-/* ---------- realtime (polling) ---------- */
-async function poll(){if(!S.me||!S.ac[S.ai])return;if(OB.length)flush();const j=await api('/updates?after='+S.v);if(!j.items)return;S.v=j.v;S.n=(S.n||0)+1;if(!j.items.length&&S.n%6)return;let d=0,inn=0;for(const x of j.items){const cur=S.cur&&x.chat===S.cur.chat;if(cur&&x.rd!==undefined){S.pr=x.rd;d=1}if(x.msg){if(cur){merge(x.msg);d=1;if(!x.msg.gone&&x.msg.from!==S.me.id)api('/read',{chat:x.chat})}else if(!x.msg.gone&&x.msg.from!==S.me.id)inn=x.chat}}await loadChats();if(inn){const c=S.ch.find(y=>y.chat===inn);if(c&&!c.mute){MSNotify.playSound();if(c.mute!==-2)MSNotify.show({title:ct(c),body:uni(prev(c.last)),chatId:c.chat,msgId:c.last&&c.last.id})}}if(d)drawMs()}
-setInterval(()=>poll().catch(()=>{}),2500);
+/* ---------- realtime (polling - FIXED with error handling) ---------- */
+let pollBusy = false;
+async function poll() {
+  if (pollBusy || !S.me || !S.ac[S.ai]) return;
+  pollBusy = true;
+  try {
+    if (OB.length) await flush();
+    const j = await api('/updates?after=' + S.v);
+    if (!j.items) return;
+    S.v = j.v;
+    S.n = (S.n || 0) + 1;
+    if (!j.items.length && S.n % 6) return;
+    let d = 0, inn = 0;
+    for (const x of j.items) {
+      const cur = S.cur && x.chat === S.cur.chat;
+      if (cur && x.rd !== undefined) { S.pr = x.rd; d = 1 }
+      if (x.msg) {
+        if (cur) {
+          merge(x.msg); d = 1;
+          if (!x.msg.gone && x.msg.from !== S.me.id) api('/read', { chat: x.chat })
+        } else if (!x.msg.gone && x.msg.from !== S.me.id) inn = x.chat
+      }
+    }
+    await loadChats();
+    if (inn) {
+      const c = S.ch.find(y => y.chat === inn);
+      if (c && !c.mute) {
+        MSNotify.playSound();
+        if (c.mute !== -2) MSNotify.show({ title: ct(c), body: uni(prev(c.last)), chatId: c.chat, msgId: c.last && c.last.id })
+      }
+    }
+    if (d) drawMs();
+  } catch (e) {
+    console.warn('Poll error:', e.message);
+  } finally {
+    pollBusy = false;
+  }
+}
+setInterval(() => poll().catch(() => {}), 5000);
 boot();
 
 addEventListener('keydown',e=>{if(e.key==='Escape'&&S.cur&&!$('#dlg').innerHTML&&$('#sh').hidden)Act.back()});
 
 /* =========================================================
-   SHARE TARGET (File manager se share aayi files handle karna)
+   SHARE TARGET (FIXED - NO Content-Type header)
    ========================================================= */
 if (new URLSearchParams(location.search).has('shared')) {
-  history.replaceState(null, '', '/'); // URL clean karo
-  
+  history.replaceState(null, '', '/');
   const checkBoot = setInterval(async () => {
     if (S.me && S.ch && S.ch.length >= 0) {
       clearInterval(checkBoot);
-      
       try {
         const db = await new Promise((res, rej) => {
           const req = indexedDB.open('MS_Chat_Share', 1);
           req.onsuccess = (e) => res(e.target.result);
           req.onerror = (e) => rej(e.target.error);
         });
-
         const tx = db.transaction('shared_files', 'readwrite');
         const store = tx.objectStore('shared_files');
         const req = store.getAll();
-        
         req.onsuccess = () => {
           const files = req.result;
           if (!files || files.length === 0) return;
-
           const d = $('#dlg');
           const validChats = S.ch.filter(c => c && c.chat && c.peer);
-          
           d.innerHTML = `<div class="ov"><div class="badge bx" style="max-height: 80vh; display: flex; flex-direction: column; padding: 0;">
             <div style="padding: 18px; border-bottom: 1px solid var(--bd);">
               <h3 style="margin-bottom: 4px;">Send Files</h3>
@@ -355,7 +411,6 @@ if (new URLSearchParams(location.search).has('shared')) {
               <button id="share-cancel" style="color: #ff5b5b;">Cancel</button>
             </div>
           </div></div>`;
-
           d.querySelectorAll('[data-share-i]').forEach(el => {
             el.onclick = async () => {
               const chatIdx = +el.dataset.shareI;
@@ -364,46 +419,36 @@ if (new URLSearchParams(location.search).has('shared')) {
               await processSharedFiles(files, targetChat, store);
             };
           });
-
           d.querySelector('#share-cancel').onclick = () => {
             d.innerHTML = '';
             store.clear();
             toast('Share cancelled');
           };
         };
-      } catch (err) {
-        console.error('Share target error:', err);
-      }
+      } catch (err) { console.error('Share target error:', err); }
     }
-  }, 500);
+  }, 800);
 }
 
 async function processSharedFiles(files, targetChat, store) {
   toast('Sending files...');
   for (const file of files) {
     const f = new File([file.blob], file.name, { type: file.type });
-    
     let url;
     try {
       const filename = `${f.name.replace(/[^\w.\-]/g, '_')}`;
       const res = await fetch(`${API_BASE}/upload?name=${E(filename)}`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + S.ac[S.ai].token, 'Content-Type': f.type || 'application/octet-stream' },
+        headers: { 'Authorization': 'Bearer ' + S.ac[S.ai].token },
         body: f
       });
       const data = await res.json();
       if (data.err) throw new Error(data.err);
       url = data.url;
-    } catch (e) {
-      toast('Upload failed: ' + e.message);
-      continue;
-    }
-
+    } catch (e) { toast('Upload failed: ' + e.message); continue; }
     if (url) {
       const mediaObj = { 
-        url, 
-        name: f.name, 
-        size: f.size, 
+        url, name: f.name, size: f.size, 
         type: f.type.startsWith('image') ? 'image' : f.type.startsWith('video') ? 'video' : f.type.startsWith('audio') ? 'audio' : 'file' 
       };
       await api('/send', { chat: targetChat, media: mediaObj, text: '' });
@@ -411,7 +456,6 @@ async function processSharedFiles(files, targetChat, store) {
   }
   store.clear();
   toast('All files sent successfully!');
-  
   if (S.cur && S.cur.chat === targetChat) loadMs();
   else loadChats();
 }
